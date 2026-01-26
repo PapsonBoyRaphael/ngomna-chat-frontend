@@ -1,0 +1,53 @@
+name: ngomna_chat
+description: Ngomna Instant Chat - Application de messagerie instantanée
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management & Navigation
+  get: ^4.6.6
+
+  # Google Fonts
+  google_fonts: ^6.1.0
+
+  # Icons
+  cupertino_icons: ^1.0.6
+
+  # Flutter Vector Icons
+  flutter_vector_icons: ^2.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+    - assets/images/
+    - assets/avatars/
+
+fonts:
+  - family: Rosario
+    fonts:
+      - asset: assets/fonts/Rosario-Regular.ttf
+        weight: 400
+      - asset: assets/fonts/Rosario-Medium.ttf
+        weight: 500
+  - family: Roboto
+    fonts:
+      - asset: assets/fonts/Roboto-Regular.ttf
+        weight: 400
+      - asset: assets/fonts/Roboto-SemiBold.ttf
+        weight: 600
+      - asset: assets/fonts/Roboto-Bold.ttf
+        weight: 700
+      - asset: assets/fonts/Roboto-ExtraBold.ttf
+        weight: 800
