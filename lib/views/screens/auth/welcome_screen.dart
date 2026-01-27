@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ngomna_chat/views/screens/auth/enter_matricule_screen.dart';
 import 'package:ngomna_chat/views/widgets/common/top_bar.dart';
 import 'package:ngomna_chat/views/widgets/common/bottom_nav.dart';
+import 'package:ngomna_chat/core/routes/app_routes.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});

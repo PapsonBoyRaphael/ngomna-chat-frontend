@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ngomna_chat/views/screens/chat/chat_list_screen.dart';
-import 'package:ngomna_chat/views/screens/home/home_screen.dart';
+import 'package:ngomna_chat/views/screens/home/ngomna_first_screen.dart';
+import 'package:ngomna_chat/core/routes/app_routes.dart';
 
 class BottomNav extends StatelessWidget {
   const BottomNav({super.key});
