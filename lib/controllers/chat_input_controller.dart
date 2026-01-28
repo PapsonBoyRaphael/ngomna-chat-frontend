@@ -11,8 +11,11 @@ class ChatInputStateController extends ChangeNotifier {
   }
 
   void closeAttachMenu() {
+    print(
+        'ChatInputStateController: closeAttachMenu called. Current _showAttachMenu = $_showAttachMenu');
     if (_showAttachMenu) {
       _showAttachMenu = false;
+      print('ChatInputStateController: closeAttachMenu executed');
       notifyListeners();
     }
   }

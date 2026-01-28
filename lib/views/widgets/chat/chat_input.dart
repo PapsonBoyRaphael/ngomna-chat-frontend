@@ -2,27 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:ngomna_chat/core/constants/app_assets.dart';
 import 'package:ngomna_chat/controllers/chat_input_controller.dart';
 
-class ChatInputController extends ChangeNotifier {
-  bool _showAttachMenu = false;
-
-  bool get showAttachMenu => _showAttachMenu;
-
-  void toggleAttachMenu() {
-    _showAttachMenu = !_showAttachMenu;
-    notifyListeners();
-  }
-
-  void closeAttachMenu() {
-    if (_showAttachMenu) {
-      _showAttachMenu = false;
-      notifyListeners();
-    }
-  }
-}
-
 class ChatInput extends StatefulWidget {
   final Function(String) onSendMessage;
-  final ChatInputStateController controller; // Mise à jour du type accepté
+  final ChatInputStateController controller;
 
   const ChatInput({
     super.key,
@@ -67,6 +49,8 @@ class _ChatInputState extends State<ChatInput> {
   }
 
   void _updateState() {
+    debugPrint(
+        'ChatInput: _updateState called. showAttachMenu = \\${widget.controller.showAttachMenu}');
     setState(() {});
   }
 
@@ -78,6 +62,8 @@ class _ChatInputState extends State<ChatInput> {
         if (widget.controller.showAttachMenu) {
           widget.controller.closeAttachMenu();
           debugPrint('Clic détecté en dehors du menu attaché (ChatInput)');
+        } else {
+          debugPrint('Clic ignoré car le menu est déjà fermé (ChatInput)');
         }
       },
       child: SafeArea(
@@ -113,6 +99,13 @@ class _ChatInputState extends State<ChatInput> {
                       maxLines: 6,
                       keyboardType: TextInputType.multiline,
                       onChanged: _onTextChanged,
+                      onTap: () {
+                        if (widget.controller.showAttachMenu) {
+                          widget.controller.closeAttachMenu();
+                          debugPrint(
+                              'Menu attaché fermé lors du clic sur le TextField');
+                        }
+                      },
                       decoration: InputDecoration(
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(22),

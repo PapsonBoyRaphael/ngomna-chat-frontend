@@ -24,22 +24,31 @@ class ChatScreen extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) =>
-              ChatViewModel(MessageRepository(), chatId)..loadMessages(),
+          create: (_) => controller.ChatInputStateController(),
         ),
         ChangeNotifierProvider(
-          create: (_) => controller.ChatInputStateController(),
+          create: (_) =>
+              ChatViewModel(MessageRepository(), chatId)..loadMessages(),
         ),
       ],
       child: Builder(
         builder: (context) {
+          final controllerInstance =
+              Provider.of<controller.ChatInputStateController>(context,
+                  listen: false);
+          debugPrint(
+              'ChatScreen: Controller instance = $controllerInstance. showAttachMenu = ${controllerInstance.showAttachMenu}');
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () {
-              debugPrint('Clic détecté en dehors du menu attaché (ChatScreen)');
-              context
-                  .read<controller.ChatInputStateController>()
-                  .closeAttachMenu();
+              if (controllerInstance.showAttachMenu) {
+                debugPrint(
+                    'Tentative de fermeture du menu attaché (ChatScreen)');
+                controllerInstance.closeAttachMenu();
+              } else {
+                debugPrint(
+                    'Menu déjà fermé, aucune action nécessaire (ChatScreen)');
+              }
             },
             child: _ChatScreenContent(user: user),
           );
@@ -77,7 +86,7 @@ class _ChatScreenContent extends StatelessWidget {
             onSendMessage: (text) {
               context.read<ChatViewModel>().sendMessage(text);
             },
-            controller: controller.ChatInputStateController(),
+            controller: context.read<controller.ChatInputStateController>(),
           ),
         ],
       ),
