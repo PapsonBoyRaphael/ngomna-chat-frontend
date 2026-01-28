@@ -5,7 +5,6 @@ import 'package:ngomna_chat/views/screens/chat/chat_list_screen.dart';
 import 'package:ngomna_chat/views/screens/home/ngomna_first_screen.dart';
 import 'package:ngomna_chat/views/screens/auth/select_post_screen.dart';
 import 'package:ngomna_chat/data/models/contact_model.dart';
-import 'package:ngomna_chat/views/screens/groups/create_group_screen.dart';
 import 'package:ngomna_chat/views/screens/features/payslips_screen.dart';
 import 'package:ngomna_chat/views/screens/features/census_screen.dart';
 import 'package:ngomna_chat/views/screens/features/information_screen.dart';
@@ -13,7 +12,10 @@ import 'package:ngomna_chat/views/screens/features/dgi_screen.dart';
 import 'package:ngomna_chat/views/screens/chat/chat_broadcast_screen.dart';
 import 'package:ngomna_chat/views/screens/chat/new_chat_screen.dart';
 import 'package:ngomna_chat/views/screens/chat/chat_group_screen.dart';
-import 'package:ngomna_chat/screens/select_contact_screen.dart';
+import 'package:ngomna_chat/views/screens/contacts/select_contacts_screen.dart';
+import 'package:ngomna_chat/views/screens/chat/chat_screen.dart';
+import 'package:ngomna_chat/viewmodels/select_contacts_viewmodel.dart';
+import 'package:ngomna_chat/views/screens/contacts/create_group_screen.dart';
 
 class AppRoutes {
   // Auth
@@ -63,9 +65,24 @@ class AppRoutes {
       census: (context) => const CensusScreen(),
       information: (context) => const InformationScreen(),
       dgi: (context) => const DgiScreen(),
+      chat: (context) {
+        final args =
+            ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
+        if (args == null || args['user'] == null) {
+          throw Exception(
+              'Arguments "chatId" and "user" are required for ChatScreen');
+        }
+        return ChatScreen(
+          chatId: args['chatId'],
+          user: args['user'],
+        );
+      },
       chatBroadcast: (context) {
         final args =
-            ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+            ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
+        if (args == null) {
+          throw Exception('Arguments are required for ChatBroadcastScreen');
+        }
         return ChatBroadcastScreen(
           broadcastId: args['broadcastId'],
           broadcastName: args['broadcastName'] ?? 'Broadcast',
@@ -74,7 +91,10 @@ class AppRoutes {
       newChat: (context) => const NewChatScreen(),
       chatGroup: (context) {
         final args =
-            ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+            ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
+        if (args == null) {
+          throw Exception('Arguments are required for ChatGroupScreen');
+        }
         return ChatGroupScreen(
           groupId: args['groupId'],
           groupName: args['groupName'],

@@ -4,9 +4,10 @@ import 'package:ngomna_chat/viewmodels/group_chat_viewmodel.dart';
 import 'package:ngomna_chat/data/repositories/group_chat_repository.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_app_bar.dart';
 import 'package:ngomna_chat/views/widgets/chat/message_bubble_with_avatar.dart';
-import 'package:ngomna_chat/views/widgets/chat/date_separator.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_input.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
+import 'package:ngomna_chat/controllers/chat_input_controller.dart'
+    as controller;
 
 class ChatGroupScreen extends StatelessWidget {
   final String groupId;
@@ -22,14 +23,35 @@ class ChatGroupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => GroupChatViewModel(
-        GroupChatRepository(),
-        groupId,
-      )..loadMessages(),
-      child: _ChatGroupContent(
-        groupName: groupName,
-        groupAvatar: groupAvatar,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        debugPrint('Clic détecté en dehors du menu attaché (ChatGroupScreen)');
+        Builder(
+          builder: (context) {
+            context
+                .read<controller.ChatInputStateController>()
+                .closeAttachMenu();
+            return const SizedBox();
+          },
+        );
+      },
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(
+            create: (_) => GroupChatViewModel(
+              GroupChatRepository(),
+              groupId,
+            )..loadMessages(),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => controller.ChatInputStateController(),
+          ),
+        ],
+        child: _ChatGroupContent(
+          groupName: groupName,
+          groupAvatar: groupAvatar,
+        ),
       ),
     );
   }
@@ -72,6 +94,7 @@ class _ChatGroupContent extends StatelessWidget {
             onSendMessage: (text) {
               context.read<GroupChatViewModel>().sendMessage(text);
             },
+            controller: controller.ChatInputStateController(),
           ),
         ],
       ),
@@ -100,6 +123,7 @@ class _ChatGroupContent extends StatelessWidget {
                 message: message,
                 senderName: !message.isMe ? message.sender.name : null,
                 avatarUrl: !message.isMe ? message.sender.avatarUrl : null,
+                key: ValueKey(message.id),
               );
             },
           );

@@ -12,7 +12,7 @@ class EnterMatriculeScreen extends StatelessWidget {
       inputHint: 'Matricule',
       onSubmit: (matricule) {
         // TODO: Sauvegarder le matricule (ViewModel)
-        Navigator.pushNamed(context, AppRoutes.selectPost);
+        Navigator.pushNamed(context, AppRoutes.home);
       },
     );
   }

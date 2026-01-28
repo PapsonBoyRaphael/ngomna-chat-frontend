@@ -1,0 +1,58 @@
+[
+  {
+    "family": "Roboto-Regular",
+    "fonts": [
+      {
+        "asset": "assets/fonts/Roboto-Regular.ttf"
+      }
+    ]
+  },
+  {
+    "family": "Roboto-Medium",
+    "fonts": [
+      {
+        "asset": "assets/fonts/Roboto-Medium.ttf"
+      }
+    ]
+  },
+  {
+    "family": "Roboto-SemiBold",
+    "fonts": [
+      {
+        "asset": "assets/fonts/Roboto-SemiBold.ttf"
+      }
+    ]
+  },
+  {
+    "family": "Roboto-Bold",
+    "fonts": [
+      {
+        "asset": "assets/fonts/Roboto-Bold.ttf"
+      }
+    ]
+  },
+  {
+    "family": "Roboto-ExtraBold",
+    "fonts": [
+      {
+        "asset": "assets/fonts/Roboto-ExtraBold.ttf"
+      }
+    ]
+  },
+  {
+    "family": "Rosario-Regular",
+    "fonts": [
+      {
+        "asset": "assets/fonts/Rosario-Regular.ttf"
+      }
+    ]
+  },
+  {
+    "family": "Rosario-Medium",
+    "fonts": [
+      {
+        "asset": "assets/fonts/Rosario-Medium.ttf"
+      }
+    ]
+  }
+]

@@ -3,6 +3,7 @@ import 'package:ngomna_chat/views/screens/auth/enter_matricule_screen.dart';
 import 'package:ngomna_chat/views/widgets/common/top_bar.dart';
 import 'package:ngomna_chat/views/widgets/common/bottom_nav.dart';
 import 'package:ngomna_chat/core/routes/app_routes.dart';
+import 'package:ngomna_chat/core/constants/app_fonts.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -52,7 +53,7 @@ class WelcomeScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w500,
-                          fontFamily: 'Rosario',
+                          fontFamily: AppFonts.rosarioMedium,
                           height: 1.6,
                           shadows: [
                             Shadow(
@@ -68,8 +69,8 @@ class WelcomeScreen extends StatelessWidget {
                           backgroundColor: Colors.white,
                           foregroundColor: Colors.green,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 48,
-                            vertical: 18,
+                            horizontal: 50,
+                            vertical: 26,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30),
@@ -85,7 +86,7 @@ class WelcomeScreen extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
-                            fontFamily: 'Roboto',
+                            fontFamily: AppFonts.robotoExtraBold,
                             letterSpacing: 1.2,
                             color: Colors.green,
                           ),

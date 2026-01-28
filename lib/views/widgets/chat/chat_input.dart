@@ -1,12 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:ngomna_chat/core/constants/app_assets.dart';
+import 'package:ngomna_chat/controllers/chat_input_controller.dart';
+
+class ChatInputController extends ChangeNotifier {
+  bool _showAttachMenu = false;
+
+  bool get showAttachMenu => _showAttachMenu;
+
+  void toggleAttachMenu() {
+    _showAttachMenu = !_showAttachMenu;
+    notifyListeners();
+  }
+
+  void closeAttachMenu() {
+    if (_showAttachMenu) {
+      _showAttachMenu = false;
+      notifyListeners();
+    }
+  }
+}
 
 class ChatInput extends StatefulWidget {
   final Function(String) onSendMessage;
+  final ChatInputStateController controller; // Mise à jour du type accepté
 
   const ChatInput({
     super.key,
     required this.onSendMessage,
+    required this.controller,
   });
 
   @override
@@ -15,7 +36,6 @@ class ChatInput extends StatefulWidget {
 
 class _ChatInputState extends State<ChatInput> {
   final TextEditingController _controller = TextEditingController();
-  bool _showAttachMenu = false;
   bool _isTyping = false;
 
   void _onTextChanged(String text) {
@@ -35,124 +55,142 @@ class _ChatInputState extends State<ChatInput> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_updateState);
+  }
+
+  @override
   void dispose() {
-    _controller.dispose();
+    widget.controller.removeListener(_updateState);
     super.dispose();
+  }
+
+  void _updateState() {
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 18, 12, 10),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _showAttachMenu = !_showAttachMenu;
-                    });
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Icon(
-                      Icons.add,
-                      size: 26,
-                      color: _showAttachMenu
-                          ? const Color(0xFF4CAF50)
-                          : const Color(0xFF9E9E9E),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    minLines: 1,
-                    maxLines: 6,
-                    keyboardType: TextInputType.multiline,
-                    onChanged: _onTextChanged,
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(22),
-                        borderSide: const BorderSide(
-                          color: Color(0xFFE0E0E0),
-                          width: 1,
-                        ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: const BorderSide(
-                          color: Color.fromARGB(255, 134, 134, 134),
-                          width: 1.2,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: const BorderSide(
-                          color: Color(0xFF4CAF50),
-                          width: 1.5,
-                        ),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      hintText: 'Message...',
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF9E9E9E),
-                        fontSize: 15,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (widget.controller.showAttachMenu) {
+          widget.controller.closeAttachMenu();
+          debugPrint('Clic détecté en dehors du menu attaché (ChatInput)');
+        }
+      },
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 18, 12, 10),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      widget.controller.toggleAttachMenu();
+                      debugPrint('Clic sur le bouton + (ChatInput)');
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Icon(
+                        Icons.add,
+                        size: 26,
+                        color: widget.controller.showAttachMenu
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFF9E9E9E),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                if (!_isTyping) ...[
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 10),
-                    child: Icon(Icons.mic, color: Color(0xFF9E9E9E)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      minLines: 1,
+                      maxLines: 6,
+                      keyboardType: TextInputType.multiline,
+                      onChanged: _onTextChanged,
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE0E0E0),
+                            width: 1,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(
+                            color: Color.fromARGB(255, 134, 134, 134),
+                            width: 1.2,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF4CAF50),
+                            width: 1.5,
+                          ),
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        hintText: 'Message...',
+                        hintStyle: const TextStyle(
+                          color: Color(0xFF9E9E9E),
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 10),
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 10),
-                    child: Icon(Icons.camera_alt, color: Color(0xFF9E9E9E)),
-                  ),
-                ] else ...[
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 5),
-                    child: GestureDetector(
-                      onTap: _sendMessage,
-                      child: ColorFiltered(
-                        colorFilter: const ColorFilter.mode(
-                          Colors.black,
-                          BlendMode.srcIn,
-                        ),
-                        child: Image.asset(
-                          AppAssets.send,
-                          width: 35,
-                          height: 35,
+                  if (!_isTyping) ...[
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 10),
+                      child: Icon(Icons.mic, color: Color(0xFF9E9E9E)),
+                    ),
+                    const SizedBox(width: 10),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 10),
+                      child: Icon(Icons.camera_alt, color: Color(0xFF9E9E9E)),
+                    ),
+                  ] else ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 5),
+                      child: GestureDetector(
+                        onTap: _sendMessage,
+                        child: ColorFiltered(
+                          colorFilter: const ColorFilter.mode(
+                            Colors.black,
+                            BlendMode.srcIn,
+                          ),
+                          child: Image.asset(
+                            AppAssets.send,
+                            width: 35,
+                            height: 35,
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
-            ),
-            if (_showAttachMenu)
-              Positioned(
-                bottom: 60,
-                left: 0,
-                child: _AttachMenu(
-                  onClose: () => setState(() => _showAttachMenu = false),
-                ),
               ),
-          ],
+              if (widget.controller.showAttachMenu)
+                Positioned(
+                  bottom: 60,
+                  left: 0,
+                  child: _AttachMenu(
+                    onClose: () => widget.controller.closeAttachMenu(),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

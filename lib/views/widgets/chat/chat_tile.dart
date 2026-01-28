@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
+import 'package:ngomna_chat/core/constants/app_fonts.dart';
 
 class ChatTile extends StatelessWidget {
   final Chat chat;

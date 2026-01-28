@@ -1,33 +1,62 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:ngomna_chat/data/models/contact_model.dart';
+import 'package:ngomna_chat/data/models/group_info_model.dart';
+import 'package:ngomna_chat/data/repositories/group_repository.dart';
 
 class CreateGroupViewModel extends ChangeNotifier {
-  final List<Contact> selectedContacts;
-  final TextEditingController groupNameController = TextEditingController();
-  final TextEditingController groupDescriptionController =
-      TextEditingController();
-  String get groupId => _groupId;
-  late final String _groupId;
+  final GroupRepository _repository;
+  final List<Contact> selectedMembers;
 
-  CreateGroupViewModel(List<Contact> selectedContacts)
-      : selectedContacts = selectedContacts {
-    _groupId = _generateGroupId();
-  }
+  String _groupName = '';
+  String _groupDescription = '';
+  bool _isCreating = false;
+  String? _error;
 
-  String _generateGroupId() {
-    // Logic to generate a unique group ID
-    return DateTime.now().millisecondsSinceEpoch.toString();
-  }
-
+  String get groupName => _groupName;
+  String get groupDescription => _groupDescription;
+  bool get isCreating => _isCreating;
+  String? get error => _error;
   bool get isDoneEnabled =>
-      groupNameController.text.isNotEmpty &&
-      groupDescriptionController.text.isNotEmpty;
+      _groupName.trim().isNotEmpty && _groupDescription.trim().isNotEmpty;
+  int get memberCount => selectedMembers.length;
 
-  @override
-  void dispose() {
-    groupNameController.dispose();
-    groupDescriptionController.dispose();
-    super.dispose();
+  CreateGroupViewModel(this._repository, this.selectedMembers);
+
+  void setGroupName(String name) {
+    _groupName = name;
+    notifyListeners();
+  }
+
+  void setGroupDescription(String description) {
+    _groupDescription = description;
+    notifyListeners();
+  }
+
+  Future<GroupInfo?> createGroup() async {
+    if (!isDoneEnabled) return null;
+
+    _isCreating = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final groupInfo = GroupInfo(
+        name: _groupName.trim(),
+        description: _groupDescription.trim(),
+        members: selectedMembers,
+      );
+
+      final createdGroup = await _repository.createGroup(groupInfo);
+
+      _isCreating = false;
+      notifyListeners();
+
+      return createdGroup;
+    } catch (e) {
+      _error = e.toString();
+      _isCreating = false;
+      notifyListeners();
+      return null;
+    }
   }
 }

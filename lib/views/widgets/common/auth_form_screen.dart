@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ngomna_chat/views/widgets/common/top_bar.dart';
 import 'package:ngomna_chat/views/widgets/common/bottom_nav.dart';
 import 'package:ngomna_chat/core/constants/app_assets.dart';
+import 'package:ngomna_chat/core/constants/app_fonts.dart';
 
 class AuthFormScreen extends StatelessWidget {
   final String title;
@@ -63,8 +64,7 @@ class AuthFormScreen extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontSize: 24,
-                          fontWeight: FontWeight.w500,
-                          fontFamily: 'Rosario',
+                          fontFamily: AppFonts.rosarioMedium,
                           height: 1.6,
                           shadows: [
                             Shadow(
@@ -103,8 +103,7 @@ class AuthFormScreen extends StatelessWidget {
                             hintStyle: const TextStyle(
                               color: Colors.black38,
                               fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'Roboto',
+                              fontFamily: AppFonts.robotoBold,
                             ),
                             border: InputBorder.none,
                             contentPadding:

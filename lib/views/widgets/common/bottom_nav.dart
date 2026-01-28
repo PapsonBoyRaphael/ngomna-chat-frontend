@@ -13,21 +13,33 @@ class BottomNav extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          GestureDetector(
-            onTap: () {
+          IconButton(
+            onPressed: () {
               Navigator.pushNamed(context, AppRoutes.chatList);
             },
-            child: Image.asset('assets/icons/chat.png', width: 52),
+            icon: Image.asset('assets/icons/chat.png', width: 52),
+            iconSize: 52,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            splashRadius: 28, // Rayon pour un effet circulaire
           ),
-          GestureDetector(
-            onTap: () {
+          IconButton(
+            onPressed: () {
               Navigator.pushNamed(context, AppRoutes.home);
             },
-            child: Image.asset('assets/icons/home.png', width: 32),
+            icon: Image.asset('assets/icons/home.png', width: 32),
+            iconSize: 32,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            splashRadius: 28,
           ),
-          GestureDetector(
-            onTap: () {},
-            child: Image.asset('assets/icons/sparkle.png', width: 50),
+          IconButton(
+            onPressed: () {},
+            icon: Image.asset('assets/icons/sparkle.png', width: 50),
+            iconSize: 50,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            splashRadius: 28,
           ),
         ],
       ),

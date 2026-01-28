@@ -8,6 +8,8 @@ import 'package:ngomna_chat/views/widgets/chat/category_chip.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_list_top_bar.dart';
 import 'package:ngomna_chat/views/widgets/common/bottom_nav.dart';
 import 'package:ngomna_chat/core/routes/app_routes.dart';
+import 'package:ngomna_chat/data/models/user_model.dart';
+import 'package:ngomna_chat/core/constants/app_fonts.dart';
 
 class ChatListScreen extends StatelessWidget {
   const ChatListScreen({super.key});
@@ -30,7 +32,7 @@ class _ChatListContent extends StatelessWidget {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.only(top: 10, left: 5, right: 5),
+          padding: const EdgeInsets.only(top: 15, left: 5, right: 5),
           child: Column(
             children: [
               ChatListTopBar(
@@ -113,16 +115,39 @@ class _ChatListContent extends StatelessWidget {
   void _navigateToChat(BuildContext context, Chat chat) {
     switch (chat.type) {
       case ChatType.broadcast:
-        Navigator.pushNamed(context, AppRoutes.chatBroadcast);
+        Navigator.pushNamed(
+          context,
+          AppRoutes.chatBroadcast,
+          arguments: {
+            'broadcastId': chat.id,
+            'broadcastName': chat.name,
+          },
+        );
         break;
       case ChatType.group:
-        Navigator.pushNamed(context, AppRoutes.chatGroup);
+        Navigator.pushNamed(
+          context,
+          AppRoutes.chatGroup,
+          arguments: {
+            'groupId': chat.id,
+            'groupName': chat.name,
+            'groupAvatar': chat.avatarUrl ??
+                'default_avatar_url', // Ajoutez une valeur par défaut si nécessaire
+          },
+        );
         break;
       case ChatType.personal:
         Navigator.pushNamed(
           context,
           AppRoutes.chat,
-          arguments: {'chatId': chat.id, 'userName': chat.name},
+          arguments: {
+            'chatId': chat.id,
+            'user': User(
+              id: chat.id,
+              name: chat.name,
+              avatarUrl: chat.avatarUrl,
+            ),
+          },
         );
         break;
     }

@@ -125,6 +125,7 @@ class _SelectContactsContent extends StatelessWidget {
         AppRoutes.chatBroadcast,
         arguments: {
           'broadcastId': 'new_broadcast',
+          'broadcastName': 'New Broadcast', // Ajoutez un nom par défaut
           'selectedContacts': viewModel.selectedContacts,
         },
       );

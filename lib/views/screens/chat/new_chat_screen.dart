@@ -10,6 +10,7 @@ import 'package:ngomna_chat/views/widgets/chat/category_chip.dart';
 import 'package:ngomna_chat/views/widgets/common/bottom_nav.dart';
 import 'package:ngomna_chat/core/constants/app_assets.dart';
 import 'package:ngomna_chat/core/routes/app_routes.dart';
+import 'package:ngomna_chat/data/models/user_model.dart';
 
 class NewChatScreen extends StatelessWidget {
   const NewChatScreen({super.key});
@@ -180,7 +181,12 @@ class _NewChatContent extends StatelessWidget {
               AppRoutes.chat,
               arguments: {
                 'chatId': contact.id,
-                'userName': contact.name,
+                'user': User(
+                  id: contact.id,
+                  name: contact.name,
+                  avatarUrl: contact.avatarUrl ??
+                      'default_avatar_url', // Ajoutez une valeur par défaut si nécessaire
+                ),
               },
             );
           },
@@ -200,7 +206,12 @@ class _NewChatContent extends StatelessWidget {
               AppRoutes.chat,
               arguments: {
                 'chatId': contact.id,
-                'userName': contact.name,
+                'user': User(
+                  id: contact.id,
+                  name: contact.name,
+                  avatarUrl: contact.avatarUrl ??
+                      'default_avatar_url', // Ajoutez une valeur par défaut si nécessaire
+                ),
               },
             );
           },
@@ -221,6 +232,10 @@ class _NewChatContent extends StatelessWidget {
         return 'DGI';
       case Department.dgt:
         return 'DGT';
+      case Department.headOfBudgetService:
+        return 'Head of Budget Service';
+      case Department.customPostSupervisor:
+        return 'Custom Post Supervisor';
     }
   }
 }

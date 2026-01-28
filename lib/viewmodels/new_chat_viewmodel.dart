@@ -8,6 +8,8 @@ enum Department {
   dgd,
   dgi,
   dgt,
+  headOfBudgetService,
+  customPostSupervisor,
 }
 
 class NewChatViewModel extends ChangeNotifier {

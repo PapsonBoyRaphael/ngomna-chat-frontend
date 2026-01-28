@@ -24,7 +24,7 @@ class ChatListTopBar extends StatelessWidget {
               const Text(
                 'Chats',
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 25,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF4CAF50),
                 ),
@@ -36,7 +36,7 @@ class ChatListTopBar extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 22),
           _buildSearchBar(),
         ],
       ),

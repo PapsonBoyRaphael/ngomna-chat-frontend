@@ -1,38 +1,203 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
+  <head>
+    <base href="$FLUTTER_BASE_HREF" />
 
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
+    <meta charset="UTF-8" />
+    <meta content="IE=Edge" http-equiv="X-UA-Compatible" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
 
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+    <title>NGOMNA Chat</title>
 
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
-  <base href="$FLUTTER_BASE_HREF">
+    <style>
+      /* 🎨 DÉCLARER LES POLICES EN CSS */
+      @font-face {
+        font-family: "Roboto-Regular";
+        src: url("assets/fonts/Roboto-Regular.ttf") format("truetype");
+        font-display: swap;
+      }
 
-  <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+      @font-face {
+        font-family: "Roboto-Medium";
+        src: url("assets/fonts/Roboto-Medium.ttf") format("truetype");
+        font-display: swap;
+      }
 
-  <!-- iOS meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="ngomna_chat">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+      @font-face {
+        font-family: "Roboto-SemiBold";
+        src: url("assets/fonts/Roboto-SemiBold.ttf") format("truetype");
+        font-display: swap;
+      }
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+      @font-face {
+        font-family: "Roboto-Bold";
+        src: url("assets/fonts/Roboto-Bold.ttf") format("truetype");
+        font-display: swap;
+      }
 
-  <title>ngomna_chat</title>
-  <link rel="manifest" href="manifest.json">
-</head>
-<body>
-  <script src="flutter_bootstrap.js" async></script>
-</body>
+      @font-face {
+        font-family: "Roboto-ExtraBold";
+        src: url("assets/fonts/Roboto-ExtraBold.ttf") format("truetype");
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "Rosario-Regular";
+        src: url("assets/fonts/Rosario-Regular.ttf") format("truetype");
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "Rosario-Medium";
+        src: url("assets/fonts/Rosario-Medium.ttf") format("truetype");
+        font-display: swap;
+      }
+
+      /* Police par défaut pour éviter le flash */
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #f4fffb;
+        font-family:
+          "Roboto-Regular",
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+
+      /* Loading screen */
+      #loading {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        font-size: 18px;
+        color: #4caf50;
+        font-family: "Roboto-Regular", sans-serif;
+      }
+
+      /* Spinner */
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e0e0e0;
+        border-top-color: #4caf50;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 10px;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Précharger toutes les polices (invisible) */
+      .preload-fonts {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+        font-size: 1px;
+      }
+    </style>
+
+    <!-- Précharger les polices -->
+    <link
+      rel="preload"
+      href="assets/fonts/Roboto-Regular.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="assets/fonts/Roboto-Medium.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="assets/fonts/Roboto-SemiBold.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="assets/fonts/Roboto-Bold.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="assets/fonts/Roboto-ExtraBold.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="assets/fonts/Rosario-Regular.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="assets/fonts/Rosario-Medium.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+  </head>
+  <body>
+    <!-- Forcer le navigateur à charger les polices -->
+    <div class="preload-fonts" aria-hidden="true">
+      <span style="font-family: &quot;Roboto-Regular&quot;">.</span>
+      <span style="font-family: &quot;Roboto-Medium&quot;">.</span>
+      <span style="font-family: &quot;Roboto-SemiBold&quot;">.</span>
+      <span style="font-family: &quot;Roboto-Bold&quot;">.</span>
+      <span style="font-family: &quot;Roboto-ExtraBold&quot;">.</span>
+      <span style="font-family: &quot;Rosario-Regular&quot;">.</span>
+      <span style="font-family: &quot;Rosario-Medium&quot;">.</span>
+    </div>
+
+    <!-- Script Flutter (IMPORTANT) -->
+    <script>
+      // Configuration du service worker
+      var serviceWorkerVersion = null;
+
+      // Charger Flutter
+      window.addEventListener("load", function (ev) {
+        // Download main.dart.js
+        _flutter.loader.loadEntrypoint({
+          serviceWorker: {
+            serviceWorkerVersion: serviceWorkerVersion,
+          },
+          onEntrypointLoaded: function (engineInitializer) {
+            engineInitializer.initializeEngine().then(function (appRunner) {
+              appRunner.runApp();
+              // Cacher le loading screen après le chargement
+              setTimeout(function () {
+                var loading = document.getElementById("loading");
+                if (loading) {
+                  loading.style.display = "none";
+                }
+              }, 500);
+            });
+          },
+        });
+      });
+    </script>
+
+    <!-- Script Flutter (CRITICAL) -->
+    <script src="flutter.js" defer></script>
+  </body>
 </html>

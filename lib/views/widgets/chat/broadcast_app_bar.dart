@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:ngomna_chat/core/constants/app_assets.dart';
+import 'package:ngomna_chat/core/constants/app_fonts.dart';
 
 class BroadcastAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String broadcastName;
   final VoidCallback onBack;
+  final int recipientCount;
 
   const BroadcastAppBar({
     super.key,
     required this.broadcastName,
     required this.onBack,
+    required this.recipientCount,
   });
 
   @override
@@ -49,11 +52,12 @@ class BroadcastAppBar extends StatelessWidget implements PreferredSizeWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  const Text(
-                    'Broadcasting',
-                    style: TextStyle(
+                  Text(
+                    'Broadcasting to ${recipientCount} contacts',
+                    style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF9E9E9E),
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],

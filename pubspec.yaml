@@ -35,21 +35,45 @@ flutter:
     - assets/icons/
     - assets/images/
     - assets/avatars/
+    - assets/fonts/
 
 fonts:
-  - family: Rosario
-    fonts:
-      - asset: assets/fonts/Rosario-Regular.ttf
-        weight: 400
-      - asset: assets/fonts/Rosario-Medium.ttf
-        weight: 500
-  - family: Roboto
+  # Roboto Regular
+  - family: Roboto-Regular
     fonts:
       - asset: assets/fonts/Roboto-Regular.ttf
-        weight: 400
+
+  # Roboto Medium
+  - family: Roboto-Medium
+    fonts:
+      - asset: assets/fonts/Roboto-Medium.ttf
+
+  # Roboto SemiBold
+  - family: Roboto-SemiBold
+    fonts:
       - asset: assets/fonts/Roboto-SemiBold.ttf
-        weight: 600
+
+  # Roboto Bold
+  - family: Roboto-Bold
+    fonts:
       - asset: assets/fonts/Roboto-Bold.ttf
-        weight: 700
+
+  # Roboto ExtraBold
+  - family: Roboto-ExtraBold
+    fonts:
       - asset: assets/fonts/Roboto-ExtraBold.ttf
-        weight: 800
+
+  # Rosario Regular
+  - family: Rosario-Regular
+    fonts:
+      - asset: assets/fonts/Rosario-Regular.ttf
+
+  # Rosario Medium
+  - family: Rosario-Medium
+    fonts:
+      - asset: assets/fonts/Rosario-Medium.ttf
+
+  # IMPORTANT: Dire à Flutter de NE PAS chercher sur le web
+fallbacks:
+  - "Arial"
+  - "sans-serif"

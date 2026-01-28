@@ -6,6 +6,8 @@ import 'package:ngomna_chat/data/models/user_model.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_app_bar.dart';
 import 'package:ngomna_chat/views/widgets/chat/message_bubble.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_input.dart';
+import 'package:ngomna_chat/controllers/chat_input_controller.dart'
+    as controller;
 
 class ChatScreen extends StatelessWidget {
   final String chatId;
@@ -19,9 +21,31 @@ class ChatScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => ChatViewModel(MessageRepository(), chatId)..loadMessages(),
-      child: _ChatScreenContent(user: user),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        debugPrint('Clic détecté en dehors du menu attaché (ChatScreen)');
+        Builder(
+          builder: (context) {
+            context
+                .read<controller.ChatInputStateController>()
+                .closeAttachMenu();
+            return const SizedBox();
+          },
+        );
+      },
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(
+            create: (_) =>
+                ChatViewModel(MessageRepository(), chatId)..loadMessages(),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => controller.ChatInputStateController(),
+          ),
+        ],
+        child: _ChatScreenContent(user: user),
+      ),
     );
   }
 }
@@ -54,6 +78,7 @@ class _ChatScreenContent extends StatelessWidget {
             onSendMessage: (text) {
               context.read<ChatViewModel>().sendMessage(text);
             },
+            controller: controller.ChatInputStateController(),
           ),
         ],
       ),
