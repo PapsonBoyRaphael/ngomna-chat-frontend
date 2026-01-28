@@ -20,33 +20,32 @@ class ChatBroadcastScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        debugPrint(
-            'Clic détecté en dehors du menu attaché (ChatBroadcastScreen)');
-        Builder(
-          builder: (context) {
-            context
-                .read<controller.ChatInputStateController>()
-                .closeAttachMenu();
-            return const SizedBox();
-          },
-        );
-      },
-      child: MultiProvider(
-        providers: [
-          ChangeNotifierProvider(
-            create: (_) => BroadcastViewModel(
-              BroadcastRepository(),
-              broadcastId,
-            )..loadMessages(),
-          ),
-          ChangeNotifierProvider(
-            create: (_) => controller.ChatInputStateController(),
-          ),
-        ],
-        child: _ChatBroadcastContent(broadcastName: broadcastName),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => BroadcastViewModel(
+            BroadcastRepository(),
+            broadcastId,
+          )..loadMessages(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => controller.ChatInputStateController(),
+        ),
+      ],
+      child: Builder(
+        builder: (context) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              debugPrint(
+                  'Clic détecté en dehors du menu attaché (ChatBroadcastScreen)');
+              context
+                  .read<controller.ChatInputStateController>()
+                  .closeAttachMenu();
+            },
+            child: _ChatBroadcastContent(broadcastName: broadcastName),
+          );
+        },
       ),
     );
   }

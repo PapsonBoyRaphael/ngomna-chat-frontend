@@ -23,35 +23,35 @@ class ChatGroupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        debugPrint('Clic détecté en dehors du menu attaché (ChatGroupScreen)');
-        Builder(
-          builder: (context) {
-            context
-                .read<controller.ChatInputStateController>()
-                .closeAttachMenu();
-            return const SizedBox();
-          },
-        );
-      },
-      child: MultiProvider(
-        providers: [
-          ChangeNotifierProvider(
-            create: (_) => GroupChatViewModel(
-              GroupChatRepository(),
-              groupId,
-            )..loadMessages(),
-          ),
-          ChangeNotifierProvider(
-            create: (_) => controller.ChatInputStateController(),
-          ),
-        ],
-        child: _ChatGroupContent(
-          groupName: groupName,
-          groupAvatar: groupAvatar,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => GroupChatViewModel(
+            GroupChatRepository(),
+            groupId,
+          )..loadMessages(),
         ),
+        ChangeNotifierProvider(
+          create: (_) => controller.ChatInputStateController(),
+        ),
+      ],
+      child: Builder(
+        builder: (context) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              debugPrint(
+                  'Clic détecté en dehors du menu attaché (ChatGroupScreen)');
+              context
+                  .read<controller.ChatInputStateController>()
+                  .closeAttachMenu();
+            },
+            child: _ChatGroupContent(
+              groupName: groupName,
+              groupAvatar: groupAvatar,
+            ),
+          );
+        },
       ),
     );
   }
