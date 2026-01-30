@@ -6,9 +6,9 @@ class GroupMessage extends Message {
 
   GroupMessage({
     required super.id,
-    required super.chatId,
+    required super.conversationId,
     required super.senderId,
-    required super.text,
+    required super.content,
     required super.timestamp,
     super.status,
     super.isMe,
@@ -17,10 +17,10 @@ class GroupMessage extends Message {
 
   factory GroupMessage.fromJson(Map<String, dynamic> json) {
     return GroupMessage(
-      id: json['id'],
-      chatId: json['chat_id'],
+      id: json['_id'] ?? json['id'],
+      conversationId: json['conversation_id'],
       senderId: json['sender_id'],
-      text: json['text'],
+      content: json['content'],
       timestamp: DateTime.parse(json['timestamp']),
       status: MessageStatus.values.firstWhere(
         (e) => e.name == json['status'],

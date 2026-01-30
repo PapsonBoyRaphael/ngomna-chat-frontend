@@ -9,43 +9,49 @@ class GroupChatRepository {
     return [
       GroupMessage(
         id: '1',
-        chatId: groupId,
+        conversationId: groupId,
         senderId: 'user2',
-        text: "I'm looking for a designer",
+        content: "I'm looking for a designer",
         timestamp: DateTime.now().subtract(const Duration(hours: 2)),
         isMe: false,
         sender: User(
           id: 'user2',
-          name: 'Mrs. Aichatou Bello',
+          matricule: 'user2', // Utilisation de l'ID comme matricule par défaut
+          nom: 'Mrs.', // Extraction du prénom
+          prenom: 'Aichatou Bello', // Extraction du nom
           avatarUrl: 'assets/avatars/avatar.png',
           isOnline: true,
         ),
       ),
       GroupMessage(
         id: '2',
-        chatId: groupId,
+        conversationId: groupId,
         senderId: 'user3',
-        text: "UI/UX",
+        content: "UI/UX",
         timestamp:
             DateTime.now().subtract(const Duration(hours: 1, minutes: 55)),
         isMe: false,
         sender: User(
           id: 'user3',
-          name: 'Mr. Ngah Owona',
-          avatarUrl: 'assets/avatars/avatar.png',
+          matricule: 'user3', // Utilisation de l'ID comme matricule par défaut
+          nom: 'Mr.', // Extraction du prénom
+          prenom: 'John Doe', // Extraction du nom
+          avatarUrl: 'assets/avatars/avatar2.png',
           isOnline: false,
         ),
       ),
       GroupMessage(
         id: '3',
-        chatId: groupId,
+        conversationId: groupId,
         senderId: 'me',
-        text: "You are looking in the right place\nI am a UI/UX designer",
+        content: "You are looking in the right place\nI am a UI/UX designer",
         timestamp: DateTime.now().subtract(const Duration(hours: 1)),
         isMe: true,
         sender: User(
           id: 'me',
-          name: 'Me',
+          matricule: 'me', // Utilisation de l'ID comme matricule par défaut
+          nom: 'Me', // Extraction du prénom
+          prenom: '', // Extraction du nom
           avatarUrl: 'assets/avatars/avatar.png',
           isOnline: true,
         ),
@@ -58,14 +64,16 @@ class GroupChatRepository {
 
     return GroupMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      chatId: groupId,
+      conversationId: groupId,
       senderId: 'me',
-      text: text,
+      content: text,
       timestamp: DateTime.now(),
       isMe: true,
       sender: User(
         id: 'me',
-        name: 'Me',
+        matricule: 'me', // Utilisation de l'ID comme matricule par défaut
+        nom: 'Me', // Extraction du prénom
+        prenom: '', // Extraction du nom
         avatarUrl: 'assets/avatars/avatar.png',
         isOnline: true,
       ),

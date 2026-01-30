@@ -1,0 +1,377 @@
+import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:provider/provider.dart';
+import 'package:ngomna_chat/core/constants/app_features.dart';
+import 'package:ngomna_chat/views/widgets/common/bottom_nav.dart';
+import 'package:ngomna_chat/views/widgets/common/container_wrapper.dart';
+import 'package:ngomna_chat/views/widgets/common/top_bar.dart';
+import 'package:ngomna_chat/views/widgets/home/feature_grid.dart';
+import 'package:ngomna_chat/data/services/socket_service.dart';
+import 'package:ngomna_chat/viewmodels/auth_viewmodel.dart';
+
+class NgomnaFirstScreen extends StatefulWidget {
+  const NgomnaFirstScreen({super.key});
+
+  @override
+  State<NgomnaFirstScreen> createState() => _NgomnaFirstScreenState();
+}
+
+class _NgomnaFirstScreenState extends State<NgomnaFirstScreen> {
+  late SocketService _socketService;
+  late AuthViewModel _authViewModel;
+
+  // État des conversations
+  Map<String, dynamic>? _conversationsData;
+  int _totalUnreadMessages = 0;
+  int _unreadConversations = 0;
+  bool _isLoadingConversations = true;
+  String? _error;
+
+  // Abonnements aux streams
+  StreamSubscription? _conversationsSubscription;
+  StreamSubscription? _newMessageSubscription;
+  StreamSubscription? _authSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Attendre que le widget soit monté avant d'accéder aux providers
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeSocketListeners();
+    });
+  }
+
+  void _initializeSocketListeners() {
+    _socketService = Provider.of<SocketService>(context, listen: false);
+    _authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+
+    // Vérifier si l'utilisateur est authentifié Socket.IO
+    if (!_socketService.isAuthenticated) {
+      print('⚠️ Utilisateur non authentifié Socket.IO sur home screen');
+      return;
+    }
+
+    print('🏠 Home Screen: Écoute des conversations...');
+
+    // Écouter les conversations envoyées automatiquement
+    _conversationsSubscription = _socketService.conversationsStream.listen(
+      _handleConversationsUpdate,
+      onError: (error) {
+        print('❌ Erreur stream conversations: $error');
+        setState(() {
+          _error = 'Erreur de connexion aux conversations';
+        });
+      },
+    );
+
+    // Écouter les nouveaux messages pour mettre à jour les badges
+    _newMessageSubscription = _socketService.messageStream.listen((message) {
+      print('📩 Nouveau message reçu sur home screen');
+      _incrementUnreadCount();
+    });
+
+    // Écouter les changements d'authentification
+    _authSubscription = _socketService.authStream.listen((isAuthenticated) {
+      if (!isAuthenticated) {
+        print('🔒 Déconnexion Socket.IO détectée');
+        setState(() {
+          _conversationsData = null;
+          _totalUnreadMessages = 0;
+          _unreadConversations = 0;
+        });
+      }
+    });
+
+    // Demander explicitement les conversations si pas reçues automatiquement
+    Future.delayed(const Duration(seconds: 3), () {
+      if (_conversationsData == null && _socketService.isAuthenticated) {
+        print('🔄 Demande explicite des conversations...');
+        _requestConversations();
+      }
+    });
+  }
+
+  /// Gérer la mise à jour des conversations
+  void _handleConversationsUpdate(Map<String, dynamic> data) {
+    print('💬 Conversations mises à jour reçues');
+
+    setState(() {
+      _isLoadingConversations = false;
+      _error = null;
+      _conversationsData = data;
+
+      // Extraire les statistiques
+      if (data['stats'] != null) {
+        final stats = Map<String, dynamic>.from(data['stats']);
+        _totalUnreadMessages = stats['totalUnreadMessages'] as int? ?? 0;
+        _unreadConversations = stats['unread'] as int? ?? 0;
+      } else if (data['totalUnreadMessages'] != null) {
+        _totalUnreadMessages = data['totalUnreadMessages'] as int;
+        _unreadConversations = data['unreadConversations'] as int? ?? 0;
+      }
+
+      print(
+          '📊 Stats: $_totalUnreadMessages messages non lus, $_unreadConversations conversations non lues');
+    });
+  }
+
+  /// Demander explicitement les conversations
+  Future<void> _requestConversations() async {
+    if (!_socketService.isAuthenticated) return;
+
+    setState(() {
+      _isLoadingConversations = true;
+    });
+
+    try {
+      // Le SocketService a une méthode pour demander les conversations
+      // Note: La méthode _getConversations() dans SocketService est privée
+      // On pourrait l'exposer ou utiliser un autre mécanisme
+
+      // Pour l'instant, on attend juste les conversations automatiques
+      await Future.delayed(const Duration(seconds: 5));
+
+      if (_conversationsData == null) {
+        setState(() {
+          _error = 'Aucune conversation reçue';
+          _isLoadingConversations = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Erreur chargement conversations';
+        _isLoadingConversations = false;
+      });
+      print('❌ Erreur demande conversations: $e');
+    }
+  }
+
+  /// Incrémenter le compteur de messages non lus
+  void _incrementUnreadCount() {
+    setState(() {
+      _totalUnreadMessages++;
+    });
+  }
+
+  /// Naviguer vers la liste des conversations (chat list)
+  void _navigateToChatList() {
+    Navigator.pushNamed(context, '/chat-list');
+  }
+
+  /// Naviguer vers une conversation spécifique
+  void _navigateToConversation(String conversationId) {
+    Navigator.pushNamed(
+      context,
+      '/chat',
+      arguments: {'conversationId': conversationId},
+    );
+  }
+
+  @override
+  void dispose() {
+    _conversationsSubscription?.cancel();
+    _newMessageSubscription?.cancel();
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final currentUser = _authViewModel.currentUser;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            const TopBar(),
+
+            // Indicateur de chargement/erreur
+            if (_isLoadingConversations && _conversationsData == null)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: LinearProgressIndicator(
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning, color: Colors.orange),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(color: Colors.orange),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _requestConversations,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            Expanded(
+              child: Center(
+                child: ContainerWrapper(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: size.width * 0.02,
+                      vertical: size.height * 0.05,
+                    ),
+                    child: Column(
+                      children: [
+                        // En-tête avec informations utilisateur
+                        if (currentUser != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'Bienvenue, ${currentUser.fullName}',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  'Matricule: ${currentUser.matricule}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        // Badge de notifications si messages non lus
+                        if (_totalUnreadMessages > 0)
+                          GestureDetector(
+                            onTap: _navigateToChatList,
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .primaryColor
+                                    .withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Theme.of(context).primaryColor,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Messages non lus',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey[700],
+                                        ),
+                                      ),
+                                      Text(
+                                        '$_totalUnreadMessages message${_totalUnreadMessages > 1 ? 's' : ''}',
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Badge.count(
+                                    count: _totalUnreadMessages,
+                                    largeSize: 24,
+                                    backgroundColor: Colors.red,
+                                    textColor: Colors.white,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        // Grille des fonctionnalités
+                        Expanded(
+                          child: FeatureGrid(
+                            features: AppFeatures.homeFeatures,
+                            onTap: (feature) {
+                              if (feature.title
+                                  .toLowerCase()
+                                  .contains('chat')) {
+                                _navigateToChatList();
+                              }
+                            },
+                          ),
+                        ),
+
+                        // Informations de connexion Socket.IO
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _socketService.isConnected
+                                    ? Icons.wifi
+                                    : Icons.wifi_off,
+                                color: _socketService.isConnected
+                                    ? Colors.green
+                                    : Colors.red,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _socketService.isConnected
+                                    ? 'Connecté en temps réel'
+                                    : 'Hors ligne',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _socketService.isConnected
+                                      ? Colors.green
+                                      : Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const BottomNav(),
+          ],
+        ),
+      ),
+
+      // Badge sur l'icône chat du BottomNav
+      // Note: Le BottomNav est déjà dans le scaffold, on peut le customiser
+      // ou ajouter un badge floating
+    );
+  }
+}

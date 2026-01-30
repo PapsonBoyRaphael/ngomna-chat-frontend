@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ngomna_chat/viewmodels/chat_list_viewmodel.dart';
-import 'package:ngomna_chat/data/repositories/chat_repository.dart';
+import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_tile.dart';
 import 'package:ngomna_chat/views/widgets/chat/category_chip.dart';
@@ -9,22 +9,77 @@ import 'package:ngomna_chat/views/widgets/chat/chat_list_top_bar.dart';
 import 'package:ngomna_chat/views/widgets/common/bottom_nav.dart';
 import 'package:ngomna_chat/core/routes/app_routes.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
-import 'package:ngomna_chat/core/constants/app_fonts.dart';
+import 'dart:async';
 
-class ChatListScreen extends StatelessWidget {
+class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
+
+  @override
+  State<ChatListScreen> createState() => _ChatListScreenState();
+}
+
+class _ChatListScreenState extends State<ChatListScreen> {
+  late SocketService _socketService;
+
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _socketService = Provider.of<SocketService>(context, listen: false);
+
+      // Vérifier l'authentification Socket.IO
+      if (!_socketService.isAuthenticated) {
+        print('⚠️ Non authentifié Socket.IO, retour au login');
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AppRoutes.welcome,
+          (route) => false,
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => ChatListViewModel(ChatRepository())..loadChats(),
+      create: (_) => ChatListViewModel(),
       child: const _ChatListContent(),
     );
   }
 }
 
-class _ChatListContent extends StatelessWidget {
+class _ChatListContent extends StatefulWidget {
   const _ChatListContent();
+
+  @override
+  State<_ChatListContent> createState() => __ChatListContentState();
+}
+
+class __ChatListContentState extends State<_ChatListContent> {
+  late SocketService _socketService;
+  StreamSubscription? _conversationsSubscription;
+  StreamSubscription? _newMessageSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _socketService = Provider.of<SocketService>(context, listen: false);
+      final viewModel = Provider.of<ChatListViewModel>(context, listen: false);
+
+      // Charger les conversations initiales
+      viewModel.loadConversations();
+    });
+  }
+
+  @override
+  void dispose() {
+    _conversationsSubscription?.cancel();
+    _newMessageSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,31 +136,88 @@ class _ChatListContent extends StatelessWidget {
     return Expanded(
       child: Consumer<ChatListViewModel>(
         builder: (context, viewModel, _) {
-          if (viewModel.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (viewModel.error != null) {
-            return Center(child: Text('Error: ${viewModel.error}'));
-          }
-
-          return ListView.separated(
-            itemCount: viewModel.chats.length,
-            separatorBuilder: (_, __) => const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Divider(
-                height: 1,
-                thickness: 1.5,
-                color: Color(0xFFBDBDBD),
+          if (viewModel.isLoading && viewModel.chats.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Chargement des conversations...'),
+                ],
               ),
-            ),
-            itemBuilder: (context, index) {
-              final chat = viewModel.chats[index];
-              return ChatTile(
-                chat: chat,
-                onTap: () => _navigateToChat(context, chat),
-              );
+            );
+          }
+
+          if (viewModel.error != null && viewModel.chats.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline,
+                        size: 64, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Erreur: ${viewModel.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => viewModel.loadConversations(),
+                      child: const Text('Réessayer'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          if (viewModel.chats.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.chat, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text(
+                    'Aucune conversation',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Commencez une nouvelle conversation',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              await viewModel.loadConversations(forceRefresh: true);
             },
+            child: ListView.separated(
+              itemCount: viewModel.chats.length,
+              separatorBuilder: (_, __) => const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Divider(
+                  height: 1,
+                  thickness: 1.5,
+                  color: Color(0xFFBDBDBD),
+                ),
+              ),
+              itemBuilder: (context, index) {
+                final chat = viewModel.chats[index];
+                return ChatTile(
+                  chat: chat,
+                  onTap: () => _navigateToChat(context, chat),
+                );
+              },
+            ),
           );
         },
       ),
@@ -113,6 +225,10 @@ class _ChatListContent extends StatelessWidget {
   }
 
   void _navigateToChat(BuildContext context, Chat chat) {
+    // Marquer la conversation comme lue
+    final viewModel = Provider.of<ChatListViewModel>(context, listen: false);
+    viewModel.markConversationAsRead(chat.id);
+
     switch (chat.type) {
       case ChatType.broadcast:
         Navigator.pushNamed(
@@ -121,6 +237,7 @@ class _ChatListContent extends StatelessWidget {
           arguments: {
             'broadcastId': chat.id,
             'broadcastName': chat.name,
+            'conversationData': chat.toJson(),
           },
         );
         break;
@@ -131,22 +248,33 @@ class _ChatListContent extends StatelessWidget {
           arguments: {
             'groupId': chat.id,
             'groupName': chat.name,
-            'groupAvatar': chat.avatarUrl ??
-                'default_avatar_url', // Ajoutez une valeur par défaut si nécessaire
+            'groupAvatar': chat.avatarUrl,
+            'conversationData': chat.toJson(),
           },
         );
         break;
       case ChatType.personal:
+        // Extraire les infos du participant
+        final otherParticipant =
+            chat.participants.isNotEmpty ? chat.participants.first : null;
+
         Navigator.pushNamed(
           context,
           AppRoutes.chat,
           arguments: {
             'chatId': chat.id,
-            'user': User(
-              id: chat.id,
-              name: chat.name,
-              avatarUrl: chat.avatarUrl,
-            ),
+            'conversationId': chat.id,
+            'user': otherParticipant != null
+                ? User(
+                    id: otherParticipant['id'] ?? chat.id,
+                    matricule: otherParticipant['matricule'] ?? chat.id,
+                    nom: otherParticipant['nom'] ?? chat.name.split(' ').first,
+                    prenom:
+                        otherParticipant['prenom'] ?? chat.name.split(' ').last,
+                    avatarUrl: otherParticipant['avatarUrl'] ?? chat.avatarUrl,
+                  )
+                : User.empty(),
+            'conversationData': chat.toJson(),
           },
         );
         break;
@@ -160,9 +288,9 @@ class _ChatListContent extends StatelessWidget {
       case ChatFilter.unread:
         return 'Unread';
       case ChatFilter.myService:
-        return 'My service';
+        return 'My Service';
       case ChatFilter.allServices:
-        return 'All services';
+        return 'All Services';
       case ChatFilter.groups:
         return 'Groups';
       case ChatFilter.calls:

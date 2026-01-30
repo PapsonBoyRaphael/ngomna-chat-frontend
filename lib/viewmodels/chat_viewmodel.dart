@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/repositories/message_repository.dart';
+import 'package:ngomna_chat/data/repositories/auth_repository.dart';
 
 class ChatViewModel extends ChangeNotifier {
   final MessageRepository _repository;
+  final AuthRepository _authRepository;
   final String chatId;
 
   List<Message> _messages = [];
@@ -16,7 +18,7 @@ class ChatViewModel extends ChangeNotifier {
   bool get isSending => _isSending;
   String? get error => _error;
 
-  ChatViewModel(this._repository, this.chatId);
+  ChatViewModel(this._repository, this._authRepository, this.chatId);
 
   Future<void> loadMessages() async {
     _isLoading = true;
@@ -36,12 +38,13 @@ class ChatViewModel extends ChangeNotifier {
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
-    // Ajouter immédiatement le message avec statut "sending"
+    // Resolve the Future<User?> before accessing matricule
+    final user = await _authRepository.getCurrentUser();
     final tempMessage = Message(
       id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
-      chatId: chatId,
-      senderId: 'me',
-      text: text,
+      conversationId: chatId,
+      senderId: user?.matricule ?? 'unknown',
+      content: text,
       timestamp: DateTime.now(),
       status: MessageStatus.sending,
       isMe: true,
@@ -53,7 +56,10 @@ class ChatViewModel extends ChangeNotifier {
     _isSending = true;
 
     try {
-      final sentMessage = await _repository.sendMessage(chatId, text);
+      final sentMessage = await _repository.sendMessage(
+          conversationId: chatId,
+          content: text,
+          senderId: user?.matricule ?? 'unknown');
 
       // Remplacer le message temporaire par le message envoyé
       final index = _messages.indexWhere((m) => m.id == tempMessage.id);

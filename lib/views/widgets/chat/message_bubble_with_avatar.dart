@@ -6,12 +6,16 @@ class MessageBubbleWithAvatar extends StatelessWidget {
   final Message message;
   final String? senderName; // Nom de l'expéditeur pour les groupes
   final String? avatarUrl;
+  final Function()? onTap;
+  final Function()? onLongPress;
 
   const MessageBubbleWithAvatar({
     super.key,
     required this.message,
     this.senderName,
     this.avatarUrl,
+    this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -75,7 +79,7 @@ class MessageBubbleWithAvatar extends StatelessWidget {
                           style: senderStyle,
                         ),
                       ],
-                      TextSpan(text: message.text, style: textStyle),
+                      TextSpan(text: message.content, style: textStyle),
                       WidgetSpan(
                         alignment: PlaceholderAlignment.baseline,
                         baseline: TextBaseline.alphabetic,
@@ -135,6 +139,18 @@ class MessageBubbleWithAvatar extends StatelessWidget {
           MaterialCommunityIcons.check_all,
           size: 18,
           color: Color.fromARGB(255, 36, 148, 239),
+        );
+      case MessageStatus.failed:
+        return const Icon(
+          MaterialCommunityIcons.alert_circle_outline,
+          size: 18,
+          color: Colors.red,
+        );
+      default:
+        return const Icon(
+          MaterialCommunityIcons.help_circle_outline,
+          size: 18,
+          color: Colors.grey,
         );
     }
   }

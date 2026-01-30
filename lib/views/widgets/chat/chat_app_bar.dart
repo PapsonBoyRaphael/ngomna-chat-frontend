@@ -28,10 +28,9 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = customTitle ?? user?.name ?? 'Chat';
-    final subtitle =
-        customSubtitle ?? (user?.isOnline ?? false ? 'Online' : 'Offline');
-    final avatarUrl = customAvatar ?? user?.avatarUrl;
+    final title = customTitle ?? user.fullName ?? 'Chat';
+    final subtitle = customSubtitle ?? (user.isOnline ? 'Online' : 'Offline');
+    final avatarUrl = customAvatar ?? user.avatarUrl;
 
     return SafeArea(
       child: Padding(

@@ -4,10 +4,14 @@ import 'package:ngomna_chat/data/models/message_model.dart';
 
 class MessageBubble extends StatelessWidget {
   final Message message;
+  final Function()? onTap;
+  final Function()? onLongPress;
 
   const MessageBubble({
     super.key,
     required this.message,
+    this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -47,7 +51,7 @@ class MessageBubble extends StatelessWidget {
             Text.rich(
               TextSpan(
                 children: [
-                  TextSpan(text: message.text, style: textStyle),
+                  TextSpan(text: message.content, style: textStyle),
                   WidgetSpan(
                     alignment: PlaceholderAlignment.baseline,
                     baseline: TextBaseline.alphabetic,
@@ -105,6 +109,18 @@ class MessageBubble extends StatelessWidget {
           MaterialCommunityIcons.check_all,
           size: 18,
           color: Color.fromARGB(255, 36, 148, 239),
+        );
+      case MessageStatus.failed:
+        return const Icon(
+          MaterialCommunityIcons.alert_circle_outline,
+          size: 18,
+          color: Colors.red,
+        );
+      default:
+        return const Icon(
+          MaterialCommunityIcons.help_circle_outline,
+          size: 18,
+          color: Colors.grey,
         );
     }
   }

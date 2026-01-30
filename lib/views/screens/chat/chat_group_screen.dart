@@ -73,7 +73,9 @@ class _ChatGroupContent extends StatelessWidget {
       appBar: ChatAppBar(
         user: User(
           id: 'group',
-          name: groupName,
+          matricule: 'group', // Utilisation de l'ID comme matricule par défaut
+          nom: groupName.split(' ').first, // Extraction du prénom
+          prenom: groupName.split(' ').last, // Extraction du nom
           avatarUrl: groupAvatar,
           isOnline: true, // Les groupes sont toujours "actifs"
         ),
@@ -121,7 +123,7 @@ class _ChatGroupContent extends StatelessWidget {
 
               return MessageBubbleWithAvatar(
                 message: message,
-                senderName: !message.isMe ? message.sender.name : null,
+                senderName: !message.isMe ? message.sender.fullName : null,
                 avatarUrl: !message.isMe ? message.sender.avatarUrl : null,
                 key: ValueKey(message.id),
               );

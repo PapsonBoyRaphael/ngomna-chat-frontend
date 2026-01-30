@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/repositories/broadcast_repository.dart';
+import 'package:ngomna_chat/data/repositories/auth_repository.dart';
 
 class BroadcastViewModel extends ChangeNotifier {
   final BroadcastRepository _repository;
+  final AuthRepository _authRepository;
   final String broadcastId;
 
   List<Message> _messages = [];
@@ -18,7 +20,7 @@ class BroadcastViewModel extends ChangeNotifier {
   bool get isSending => _isSending;
   String? get error => _error;
 
-  BroadcastViewModel(this._repository, this.broadcastId);
+  BroadcastViewModel(this._repository, this._authRepository, this.broadcastId);
 
   Future<void> loadMessages() async {
     _isLoading = true;
@@ -40,11 +42,12 @@ class BroadcastViewModel extends ChangeNotifier {
     if (text.trim().isEmpty) return;
 
     // Ajouter immédiatement le message
+    final user = await _authRepository.getCurrentUser();
     final tempMessage = Message(
       id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
-      chatId: broadcastId,
-      senderId: 'me',
-      text: text,
+      conversationId: broadcastId,
+      senderId: user?.matricule ?? 'unknown',
+      content: text,
       timestamp: DateTime.now(),
       status: MessageStatus.sending,
       isMe: true,

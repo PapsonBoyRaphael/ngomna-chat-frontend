@@ -22,7 +22,7 @@ class CreateGroupScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => CreateGroupViewModel(
-        GroupRepository(ApiService('https://api.example.com')),
+        GroupRepository(ApiService()),
         selectedContacts,
       ),
       child: _CreateGroupContent(selectedContacts: selectedContacts),

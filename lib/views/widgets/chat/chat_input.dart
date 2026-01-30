@@ -5,11 +5,17 @@ import 'package:ngomna_chat/controllers/chat_input_controller.dart';
 class ChatInput extends StatefulWidget {
   final Function(String) onSendMessage;
   final ChatInputStateController controller;
+  final Function(String)? onTextChanged; // Nouveau paramètre
+  final TextEditingController? textController; // Nouveau paramètre
+  final Function()? onFileSelected; // Nouveau paramètre
 
   const ChatInput({
     super.key,
     required this.onSendMessage,
     required this.controller,
+    this.onTextChanged,
+    this.textController,
+    this.onFileSelected,
   });
 
   @override
@@ -17,13 +23,30 @@ class ChatInput extends StatefulWidget {
 }
 
 class _ChatInputState extends State<ChatInput> {
-  final TextEditingController _controller = TextEditingController();
+  late final TextEditingController _controller;
   bool _isTyping = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.textController ?? TextEditingController();
+    widget.controller.addListener(_updateState);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_updateState);
+    if (widget.textController == null) {
+      _controller.dispose();
+    }
+    super.dispose();
+  }
 
   void _onTextChanged(String text) {
     setState(() {
       _isTyping = text.isNotEmpty;
     });
+    widget.onTextChanged?.call(text);
   }
 
   void _sendMessage() {
@@ -34,18 +57,6 @@ class _ChatInputState extends State<ChatInput> {
         _isTyping = false;
       });
     }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_updateState);
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_updateState);
-    super.dispose();
   }
 
   void _updateState() {
@@ -78,6 +89,7 @@ class _ChatInputState extends State<ChatInput> {
                   GestureDetector(
                     onTap: () {
                       widget.controller.toggleAttachMenu();
+                      widget.onFileSelected?.call();
                       debugPrint('Clic sur le bouton + (ChatInput)');
                     },
                     child: Padding(

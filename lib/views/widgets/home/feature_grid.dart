@@ -4,10 +4,12 @@ import 'package:ngomna_chat/views/widgets/home/feature_card.dart';
 
 class FeatureGrid extends StatelessWidget {
   final List<Feature> features;
+  final void Function(Feature)? onTap; // Ajout du paramètre onTap
 
   const FeatureGrid({
     super.key,
     required this.features,
+    this.onTap, // Initialisation du paramètre onTap
   });
 
   @override
@@ -34,7 +36,11 @@ class FeatureGrid extends StatelessWidget {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: features.length,
               itemBuilder: (context, index) {
-                return FeatureCard(feature: features[index]);
+                return GestureDetector(
+                  onTap: () =>
+                      onTap?.call(features[index]), // Appel de onTap si défini
+                  child: FeatureCard(feature: features[index]),
+                );
               },
             ),
           ),

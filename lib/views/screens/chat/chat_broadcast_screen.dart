@@ -5,6 +5,9 @@ import 'package:ngomna_chat/data/repositories/broadcast_repository.dart';
 import 'package:ngomna_chat/views/widgets/chat/broadcast_app_bar.dart';
 import 'package:ngomna_chat/views/widgets/chat/message_bubble.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_input.dart';
+import 'package:ngomna_chat/data/services/api_service.dart';
+import 'package:ngomna_chat/data/services/storage_service.dart';
+import 'package:ngomna_chat/data/repositories/auth_repository.dart';
 import 'package:ngomna_chat/controllers/chat_input_controller.dart'
     as controller;
 
@@ -24,9 +27,12 @@ class ChatBroadcastScreen extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(
           create: (_) => BroadcastViewModel(
-            BroadcastRepository(),
-            broadcastId,
-          )..loadMessages(),
+              BroadcastRepository(AuthRepository(
+                  apiService: ApiService(), storageService: StorageService())),
+              AuthRepository(
+                  apiService: ApiService(), storageService: StorageService()),
+              broadcastId)
+            ..loadMessages(),
         ),
         ChangeNotifierProvider(
           create: (_) => controller.ChatInputStateController(),

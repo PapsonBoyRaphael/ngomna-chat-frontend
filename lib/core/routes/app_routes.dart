@@ -68,12 +68,12 @@ class AppRoutes {
       chat: (context) {
         final args =
             ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
-        if (args == null || args['user'] == null) {
+        if (args == null || args['user'] == null || args['chatId'] == null) {
           throw Exception(
               'Arguments "chatId" and "user" are required for ChatScreen');
         }
         return ChatScreen(
-          chatId: args['chatId'],
+          conversationId: args['chatId'],
           user: args['user'],
         );
       },
