@@ -7,76 +7,464 @@ class ChatRepository {
     // Simuler un délai réseau
     await Future.delayed(const Duration(milliseconds: 500));
 
+    final now = DateTime.now();
+
     return [
       Chat(
         id: '1',
         name: 'Mrs. Aichatou Bello',
-        lastMessage: 'ok done ...',
-        time: '1 hr',
-        isOnline: true,
-        isUnread: false,
-        avatarUrl: AppAssets.avatar,
         type: ChatType.personal,
+        participants: ['current_user_id_placeholder', 'user_1'],
+        createdBy: 'current_user_id_placeholder',
+        userMetadata: [
+          ParticipantMetadata(
+            userId: 'current_user_id_placeholder',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'You',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_current_user',
+          ),
+          ParticipantMetadata(
+            userId: 'user_1',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'Mrs. Aichatou Bello',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_user_1',
+          ),
+        ],
+        unreadCounts: {'current_user_id_placeholder': 0, 'user_1': 0},
+        lastMessageAt: now.subtract(const Duration(hours: 1)),
+        settings: ChatSettings(
+          allowInvites: true,
+          isPublic: false,
+          maxParticipants: 2,
+          messageRetention: 30,
+        ),
+        metadata: ChatMetadata(
+          stats: ChatStats(
+            totalMessages: 10,
+            totalParticipants: 2,
+            lastActivity: now.subtract(const Duration(hours: 1)),
+          ),
+        ),
+        integrations: ChatIntegrations(),
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: LastMessage(
+          content: 'ok done ...',
+          type: 'TEXT',
+          senderId: 'user_1',
+          senderName: 'Mrs. Aichatou Bello',
+          timestamp: now.subtract(const Duration(hours: 1)),
+        ),
       ),
       Chat(
         id: '2',
         name: 'NGOMNA PRESENTATION',
-        lastMessage: 'Mrs. Aichatou Bello',
-        time: '2 hr',
-        isOnline: true,
-        isUnread: false,
-        avatarUrl: AppAssets.group,
         type: ChatType.group,
+        participants: ['current_user_id_placeholder', 'user_2', 'user_3'],
+        createdBy: 'current_user_id_placeholder',
+        userMetadata: [
+          ParticipantMetadata(
+            userId: 'current_user_id_placeholder',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'You',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_current_user_2',
+          ),
+          ParticipantMetadata(
+            userId: 'user_2',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'Mrs. Aichatou Bello',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_user_2',
+          ),
+          ParticipantMetadata(
+            userId: 'user_3',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'Mr. Ngah Owona',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_user_3',
+          ),
+        ],
+        unreadCounts: {
+          'current_user_id_placeholder': 0,
+          'user_2': 0,
+          'user_3': 0
+        },
+        lastMessageAt: now.subtract(const Duration(hours: 2)),
+        settings: ChatSettings(
+          allowInvites: true,
+          isPublic: true,
+          maxParticipants: 50,
+          messageRetention: 30,
+        ),
+        metadata: ChatMetadata(
+          stats: ChatStats(
+            totalMessages: 25,
+            totalParticipants: 3,
+            lastActivity: now.subtract(const Duration(hours: 2)),
+          ),
+        ),
+        integrations: ChatIntegrations(),
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: LastMessage(
+          content: 'Mrs. Aichatou Bello',
+          type: 'TEXT',
+          senderId: 'user_2',
+          senderName: 'Mrs. Aichatou Bello',
+          timestamp: now.subtract(const Duration(hours: 2)),
+        ),
       ),
       Chat(
         id: '3',
         name: 'Mrs. Sheina Tchuente',
-        lastMessage: 'hahahahaha...',
-        time: '12 hr',
-        isOnline: false,
-        isUnread: false,
-        avatarUrl: AppAssets.avatar,
         type: ChatType.personal,
+        participants: ['current_user_id_placeholder', 'user_4'],
+        createdBy: 'current_user_id_placeholder',
+        userMetadata: [
+          ParticipantMetadata(
+            userId: 'current_user_id_placeholder',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'You',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_current_user_3',
+          ),
+          ParticipantMetadata(
+            userId: 'user_4',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'Mrs. Sheina Tchuente',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_user_4',
+          ),
+        ],
+        unreadCounts: {'current_user_id_placeholder': 0, 'user_4': 0},
+        lastMessageAt: now.subtract(const Duration(hours: 12)),
+        settings: ChatSettings(
+          allowInvites: true,
+          isPublic: false,
+          maxParticipants: 2,
+          messageRetention: 30,
+        ),
+        metadata: ChatMetadata(
+          stats: ChatStats(
+            totalMessages: 8,
+            totalParticipants: 2,
+            lastActivity: now.subtract(const Duration(hours: 12)),
+          ),
+        ),
+        integrations: ChatIntegrations(),
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: LastMessage(
+          content: 'hahahahaha...',
+          type: 'TEXT',
+          senderId: 'user_4',
+          senderName: 'Mrs. Sheina Tchuente',
+          timestamp: now.subtract(const Duration(hours: 12)),
+        ),
       ),
       Chat(
         id: '4',
         name: 'MINFI PROJECT',
-        lastMessage: 'Mrs. Angu Telma',
-        time: '2 hr',
-        isOnline: true,
-        isUnread: false,
-        avatarUrl: AppAssets.group,
         type: ChatType.group,
+        participants: ['current_user_id_placeholder', 'user_5', 'user_6'],
+        createdBy: 'current_user_id_placeholder',
+        userMetadata: [
+          ParticipantMetadata(
+            userId: 'current_user_id_placeholder',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'You',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_current_user_4',
+          ),
+          ParticipantMetadata(
+            userId: 'user_5',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'Mrs. Angu Telma',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_user_5',
+          ),
+          ParticipantMetadata(
+            userId: 'user_6',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'Mr. Ngah Owona',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_user_6',
+          ),
+        ],
+        unreadCounts: {
+          'current_user_id_placeholder': 0,
+          'user_5': 0,
+          'user_6': 0
+        },
+        lastMessageAt: now.subtract(const Duration(hours: 2)),
+        settings: ChatSettings(
+          allowInvites: true,
+          isPublic: true,
+          maxParticipants: 50,
+          messageRetention: 30,
+        ),
+        metadata: ChatMetadata(
+          stats: ChatStats(
+            totalMessages: 15,
+            totalParticipants: 3,
+            lastActivity: now.subtract(const Duration(hours: 2)),
+          ),
+        ),
+        integrations: ChatIntegrations(),
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: LastMessage(
+          content: 'Mrs. Angu Telma',
+          type: 'TEXT',
+          senderId: 'user_5',
+          senderName: 'Mrs. Angu Telma',
+          timestamp: now.subtract(const Duration(hours: 2)),
+        ),
       ),
       Chat(
         id: '5',
         name: 'Mr. Ngah Owona',
-        lastMessage: 'good job',
-        time: '6 hr',
-        isOnline: false,
-        isUnread: false,
-        avatarUrl: AppAssets.avatar,
         type: ChatType.personal,
+        participants: ['current_user_id_placeholder', 'user_6'],
+        createdBy: 'current_user_id_placeholder',
+        userMetadata: [
+          ParticipantMetadata(
+            userId: 'current_user_id_placeholder',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'You',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_current_user_5',
+          ),
+          ParticipantMetadata(
+            userId: 'user_6',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'Mr. Ngah Owona',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_user_6_2',
+          ),
+        ],
+        unreadCounts: {'current_user_id_placeholder': 0, 'user_6': 0},
+        lastMessageAt: now.subtract(const Duration(hours: 6)),
+        settings: ChatSettings(
+          allowInvites: true,
+          isPublic: false,
+          maxParticipants: 2,
+          messageRetention: 30,
+        ),
+        metadata: ChatMetadata(
+          stats: ChatStats(
+            totalMessages: 12,
+            totalParticipants: 2,
+            lastActivity: now.subtract(const Duration(hours: 6)),
+          ),
+        ),
+        integrations: ChatIntegrations(),
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: LastMessage(
+          content: 'good job',
+          type: 'TEXT',
+          senderId: 'user_6',
+          senderName: 'Mr. Ngah Owona',
+          timestamp: now.subtract(const Duration(hours: 6)),
+        ),
       ),
       Chat(
         id: '6',
         name: 'Mrs. Angu Telma',
-        lastMessage: 'great',
-        time: '5 hr',
-        isOnline: false,
-        isUnread: false,
-        avatarUrl: AppAssets.avatar,
         type: ChatType.personal,
+        participants: ['current_user_id_placeholder', 'user_5'],
+        createdBy: 'current_user_id_placeholder',
+        userMetadata: [
+          ParticipantMetadata(
+            userId: 'current_user_id_placeholder',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'You',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_current_user_6',
+          ),
+          ParticipantMetadata(
+            userId: 'user_5',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'Mrs. Angu Telma',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_user_5_2',
+          ),
+        ],
+        unreadCounts: {'current_user_id_placeholder': 0, 'user_5': 0},
+        lastMessageAt: now.subtract(const Duration(hours: 5)),
+        settings: ChatSettings(
+          allowInvites: true,
+          isPublic: false,
+          maxParticipants: 2,
+          messageRetention: 30,
+        ),
+        metadata: ChatMetadata(
+          stats: ChatStats(
+            totalMessages: 9,
+            totalParticipants: 2,
+            lastActivity: now.subtract(const Duration(hours: 5)),
+          ),
+        ),
+        integrations: ChatIntegrations(),
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: LastMessage(
+          content: 'great',
+          type: 'TEXT',
+          senderId: 'user_5',
+          senderName: 'Mrs. Angu Telma',
+          timestamp: now.subtract(const Duration(hours: 5)),
+        ),
       ),
       Chat(
         id: '7',
         name: 'Broadcast',
-        lastMessage: 'This is a broadcast message',
-        time: 'Just now',
-        isOnline: false,
-        isUnread: false,
-        avatarUrl: AppAssets.broadcast,
         type: ChatType.broadcast,
+        participants: ['current_user_id_placeholder'],
+        createdBy: 'current_user_id_placeholder',
+        userMetadata: [
+          ParticipantMetadata(
+            userId: 'current_user_id_placeholder',
+            unreadCount: 0,
+            isMuted: false,
+            isPinned: false,
+            notificationSettings: NotificationSettings(
+              enabled: true,
+              sound: true,
+              vibration: true,
+            ),
+            name: 'You',
+            avatar: AppAssets.avatar,
+            metadataId: 'meta_current_user_7',
+          ),
+        ],
+        unreadCounts: {'current_user_id_placeholder': 0},
+        lastMessageAt: now,
+        settings: ChatSettings(
+          allowInvites: false,
+          isPublic: false,
+          maxParticipants: 1,
+          messageRetention: 30,
+        ),
+        metadata: ChatMetadata(
+          stats: ChatStats(
+            totalMessages: 1,
+            totalParticipants: 1,
+            lastActivity: now,
+          ),
+        ),
+        integrations: ChatIntegrations(),
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: LastMessage(
+          content: 'This is a broadcast message',
+          type: 'TEXT',
+          senderId: 'current_user_id_placeholder',
+          senderName: 'You',
+          timestamp: now,
+        ),
       ),
     ];
   }
@@ -86,31 +474,10 @@ class ChatRepository {
     return chats
         .where((chat) =>
             chat.name.toLowerCase().contains(query.toLowerCase()) ||
-            chat.lastMessage.toLowerCase().contains(query.toLowerCase()))
+            (chat.lastMessage?.content
+                    .toLowerCase()
+                    .contains(query.toLowerCase()) ??
+                false))
         .toList();
   }
-
-  Future<List<Chat>> filterChats(ChatFilter filter) async {
-    final chats = await getChats();
-
-    switch (filter) {
-      case ChatFilter.all:
-        return chats;
-      case ChatFilter.unread:
-        return chats.where((c) => c.isUnread).toList();
-      case ChatFilter.groups:
-        return chats.where((c) => c.type == ChatType.group).toList();
-      default:
-        return chats;
-    }
-  }
-}
-
-enum ChatFilter {
-  all,
-  unread,
-  myService,
-  allServices,
-  groups,
-  calls,
 }

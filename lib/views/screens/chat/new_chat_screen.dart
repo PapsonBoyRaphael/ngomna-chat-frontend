@@ -187,8 +187,7 @@ class _NewChatContent extends StatelessWidget {
                       .id, // Utilisation de l'ID comme matricule par défaut
                   nom: contact.name.split(' ').first, // Extraction du prénom
                   prenom: contact.name.split(' ').last, // Extraction du nom
-                  avatarUrl: contact.avatarUrl ??
-                      'default_avatar_url', // Ajoutez une valeur par défaut si nécessaire
+                  avatarUrl: contact.avatarUrl,
                 ),
               },
             );
@@ -215,8 +214,7 @@ class _NewChatContent extends StatelessWidget {
                       .id, // Utilisation de l'ID comme matricule par défaut
                   nom: contact.name.split(' ').first, // Extraction du prénom
                   prenom: contact.name.split(' ').last, // Extraction du nom
-                  avatarUrl: contact.avatarUrl ??
-                      'default_avatar_url', // Ajoutez une valeur par défaut si nécessaire
+                  avatarUrl: contact.avatarUrl,
                 ),
               },
             );

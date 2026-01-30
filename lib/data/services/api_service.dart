@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ngomna_chat/data/services/storage_service.dart';
 
 class ApiService {
   static const String _baseUrl = 'http://localhost:8000'; // Gateway URL
 
   late Dio _dio;
+  late StorageService _storageService;
   static final ApiService _instance = ApiService._internal();
 
   factory ApiService() {
@@ -14,6 +15,7 @@ class ApiService {
   }
 
   ApiService._internal() {
+    _storageService = StorageService();
     _dio = Dio(
       BaseOptions(
         baseUrl: _baseUrl,
@@ -127,20 +129,16 @@ class ApiService {
     required String accessToken,
     required String refreshToken,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('access_token', accessToken);
-    await prefs.setString('refresh_token', refreshToken);
+    await _storageService.saveTokens(
+        accessToken: accessToken, refreshToken: refreshToken);
   }
 
   Future<String?> _getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('access_token');
+    return _storageService.getAccessToken();
   }
 
   Future<void> clearTokens() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('access_token');
-    await prefs.remove('refresh_token');
+    await _storageService.clearTokens();
   }
 
   Future<bool> isAuthenticated() async {

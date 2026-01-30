@@ -28,7 +28,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = customTitle ?? user.fullName ?? 'Chat';
+    final title = customTitle ?? user.fullName;
     final subtitle = customSubtitle ?? (user.isOnline ? 'Online' : 'Offline');
     final avatarUrl = customAvatar ?? user.avatarUrl;
 
@@ -68,18 +68,15 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
             if (showCallButtons) ...[
-              if (onCall != null) ...[
-                GestureDetector(
-                  onTap: onCall,
-                  child: const Icon(Icons.call, color: Color(0xFF4CAF50)),
-                ),
-                const SizedBox(width: 16),
-              ],
-              if (onVideoCall != null)
-                GestureDetector(
-                  onTap: onVideoCall,
-                  child: const Icon(Icons.videocam, color: Color(0xFF4CAF50)),
-                ),
+              GestureDetector(
+                onTap: onCall,
+                child: const Icon(Icons.call, color: Color(0xFF4CAF50)),
+              ),
+              const SizedBox(width: 16),
+              GestureDetector(
+                onTap: onVideoCall,
+                child: const Icon(Icons.videocam, color: Color(0xFF4CAF50)),
+              ),
             ],
           ],
         ),
@@ -92,7 +89,11 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
       children: [
         CircleAvatar(
           radius: 22,
-          backgroundImage: AssetImage(avatarUrl ?? ''),
+          backgroundImage: AssetImage(
+            (avatarUrl != null && avatarUrl.isNotEmpty)
+                ? avatarUrl
+                : 'assets/avatars/default_avatar.png',
+          ),
         ),
         if (user.isOnline)
           Positioned(
@@ -102,7 +103,6 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: const Color(0xFF4CAF50),
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 1.5),
               ),

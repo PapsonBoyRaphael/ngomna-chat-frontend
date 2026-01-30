@@ -3,6 +3,8 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
+import 'package:ngomna_chat/data/services/hive_service.dart';
 
 class SocketService {
   static const String _socketUrl = 'http://localhost:8003'; // Gateway
@@ -18,6 +20,8 @@ class SocketService {
   String? _userId;
   String? _matricule;
   String? _accessToken;
+
+  final HiveService _hiveService = HiveService();
 
   // Stream controllers pour les événements
   final StreamController<bool> _connectionController =
@@ -160,7 +164,7 @@ class SocketService {
     });
 
     // Événements messages
-    _socket.on('new_message', (data) {
+    _socket.on('newMessage', (data) {
       print('📩 Nouveau message reçu');
       try {
         final messageData = data as Map<String, dynamic>;
@@ -202,14 +206,16 @@ class SocketService {
     });
 
     // Événements conversations
-    _socket.on('conversationsLoaded', (data) {
+    _socket.on('conversationsLoaded', (data) async {
       print('📩 Données brutes reçues dans SocketService !!');
       try {
-        _conversationsController.add(data);
+        // Extraire et sauvegarder les conversations dans Hive
+        final List<Chat> conversations = _extractConversationsFromData(data);
+        await _hiveService.saveChats(conversations);
         print(
-            '💬 Conversations ajoutées au flux : ${data.length} conversations');
+            '💾 Conversations sauvegardées dans Hive : ${conversations.length}');
       } catch (e) {
-        print('❌ Erreur lors de l\'ajout des conversations au flux : $e');
+        print('❌ Erreur lors de la sauvegarde des conversations : $e');
       }
     });
 
@@ -365,18 +371,6 @@ class SocketService {
     print('📥 Chargement messages conversation: $conversationId');
   }
 
-  /// Récupérer les conversations
-  Future<void> _getConversations({int page = 1, int limit = 20}) async {
-    if (!_isAuthenticated) return;
-
-    _socket.emit('getConversations', {
-      'page': page,
-      'limit': limit,
-    });
-
-    print('💬 Chargement conversations');
-  }
-
   /// Marquer message comme livré
   Future<void> markMessageDelivered(
       String messageId, String conversationId) async {
@@ -469,6 +463,79 @@ class SocketService {
 
   // Helper
   int min(int a, int b) => a < b ? a : b;
+
+  /// Extraire les conversations des données reçues
+  List<Chat> _extractConversationsFromData(Map<String, dynamic> data) {
+    final List<Chat> conversations = [];
+
+    print('🔍 Structure des données reçues: ${data.keys.toList()}');
+    print(
+        '🔍 Type de data["conversations"]: ${data['conversations']?.runtimeType}');
+    print(
+        '🔍 Type de data["categorized"]: ${data['categorized']?.runtimeType}');
+
+    // Format 1: array direct
+    if (data['conversations'] is List) {
+      final conversationsData = data['conversations'] as List<dynamic>;
+
+      // print("conversationsData: $conversationsData");
+
+      for (final convData in conversationsData) {
+        try {
+          final chat = Chat.fromJson(convData as Map<String, dynamic>);
+          conversations.add(chat);
+        } catch (e) {
+          print('⚠️ Erreur conversion conversation: $e');
+        }
+      }
+    }
+    // Format 2: categorized
+    else if (data['categorized'] is Map<String, dynamic>) {
+      final categorized = data['categorized'] as Map<String, dynamic>;
+
+      for (final category in categorized.values) {
+        if (category is List) {
+          for (final convData in category) {
+            try {
+              final chat = Chat.fromJson(convData as Map<String, dynamic>);
+              conversations.add(chat);
+            } catch (e) {
+              print('⚠️ Erreur conversion conversation catégorisée: $e');
+            }
+          }
+        }
+      }
+    }
+    // Format 3: single
+    else if (data['type'] == 'single' && data['data'] != null) {
+      try {
+        final chat = Chat.fromJson(data['data'] as Map<String, dynamic>);
+        conversations.add(chat);
+      } catch (e) {
+        print('⚠️ Erreur conversion conversation unique: $e');
+      }
+    }
+    // Format 4: Map direct (clé = ID conversation, valeur = données conversation)
+    else if (data.isNotEmpty && data.values.first is Map<String, dynamic>) {
+      print('🔄 Tentative de traitement comme Map de conversations');
+      for (final convData in data.values) {
+        if (convData is Map<String, dynamic>) {
+          try {
+            final chat = Chat.fromJson(convData);
+            conversations.add(chat);
+            print('✅ Conversation extraite: ${chat.name}');
+          } catch (e) {
+            print('⚠️ Erreur conversion conversation Map: $e');
+          }
+        }
+      }
+    }
+
+    // Trier par dernier message
+    conversations.sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
+
+    return conversations;
+  }
 
   /// Convertir le type de message en chaîne de caractères
   static String messageTypeToString(MessageType type) {

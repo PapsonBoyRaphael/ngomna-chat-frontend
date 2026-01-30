@@ -27,11 +27,6 @@ class _NgomnaFirstScreenState extends State<NgomnaFirstScreen> {
   bool _isLoadingConversations = true;
   String? _error;
 
-  // Abonnements aux streams
-  StreamSubscription? _conversationsSubscription;
-  StreamSubscription? _newMessageSubscription;
-  StreamSubscription? _authSubscription;
-
   @override
   void initState() {
     super.initState();
@@ -54,87 +49,12 @@ class _NgomnaFirstScreenState extends State<NgomnaFirstScreen> {
 
     print('🏠 Home Screen: Écoute des conversations...');
 
-    // Écouter les conversations envoyées automatiquement
-    _conversationsSubscription = _socketService.conversationsStream.listen(
-      _handleConversationsUpdate,
-      onError: (error) {
-        print('❌ Erreur stream conversations: $error');
-        setState(() {
-          _error = 'Erreur de connexion aux conversations';
-        });
-      },
-    );
-
-    // Écouter les nouveaux messages pour mettre à jour les badges
-    _newMessageSubscription = _socketService.messageStream.listen((message) {
-      print('📩 Nouveau message reçu sur home screen');
-      _incrementUnreadCount();
-    });
-
-    // Écouter les changements d'authentification
-    _authSubscription = _socketService.authStream.listen((isAuthenticated) {
-      if (!isAuthenticated) {
-        print('🔒 Déconnexion Socket.IO détectée');
-        setState(() {
-          _conversationsData = null;
-          _totalUnreadMessages = 0;
-          _unreadConversations = 0;
-        });
-      }
-    });
-
     // Demander explicitement les conversations si pas reçues automatiquement
     Future.delayed(const Duration(seconds: 3), () {
-      if (_conversationsData == null && _socketService.isAuthenticated) {
-        print('🔄 Demande explicite des conversations...');
-        _requestConversations();
-      }
-    });
-  }
-
-  /// Gérer la mise à jour des conversations
-  void _handleConversationsUpdate(Map<String, dynamic> data) {
-    print('💬 Conversations mises à jour reçues');
-
-    // Compter le nombre réel de conversations
-    int conversationCount = 0;
-    if (data['conversations'] is List) {
-      conversationCount = (data['conversations'] as List).length;
-    } else if (data['categorized'] is Map) {
-      final categorized = data['categorized'] as Map<String, dynamic>;
-      for (final category in categorized.values) {
-        if (category is List) {
-          conversationCount += category.length;
-        }
-      }
-    }
-
-    print('🔄 Mise à jour des conversations dans NgomnaFirstScreen');
-    print('📦 Clés reçues: ${data.keys.join(", ")}');
-    print('💬 Nombre de conversations: $conversationCount');
-
-    print('🔍 Conversations actuelles: \n');
-    print(_conversationsData != null
-        ? _conversationsData
-        : 'Aucune conversation disponible');
-
-    setState(() {
-      _isLoadingConversations = false;
-      _error = null;
-      _conversationsData = data;
-
-      // Extraire les statistiques
-      if (data['stats'] != null) {
-        final stats = Map<String, dynamic>.from(data['stats']);
-        _totalUnreadMessages = stats['totalUnreadMessages'] as int? ?? 0;
-        _unreadConversations = stats['unread'] as int? ?? 0;
-      } else if (data['totalUnreadMessages'] != null) {
-        _totalUnreadMessages = data['totalUnreadMessages'] as int;
-        _unreadConversations = data['unreadConversations'] as int? ?? 0;
-      }
-
-      print(
-          '📊 Stats: $_totalUnreadMessages messages non lus, $_unreadConversations conversations non lues');
+      // if (_conversationsData == null && _socketService.isAuthenticated) {
+      //   print('🔄 Demande explicite des conversations...');
+      //   _requestConversations();
+      // }
     });
   }
 
@@ -169,18 +89,8 @@ class _NgomnaFirstScreenState extends State<NgomnaFirstScreen> {
     }
   }
 
-  /// Incrémenter le compteur de messages non lus
-  void _incrementUnreadCount() {
-    setState(() {
-      _totalUnreadMessages++;
-    });
-  }
-
   @override
   void dispose() {
-    _conversationsSubscription?.cancel();
-    _newMessageSubscription?.cancel();
-    _authSubscription?.cancel();
     super.dispose();
   }
 

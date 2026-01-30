@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
+import 'package:ngomna_chat/data/services/hive_service.dart';
 import 'dart:async';
 
 enum ChatFilter {
@@ -9,7 +10,8 @@ enum ChatFilter {
   myService,
   allServices,
   groups,
-  calls,
+  broadcasts,
+  calls
 }
 
 class ChatListViewModel extends ChangeNotifier {
@@ -22,12 +24,13 @@ class ChatListViewModel extends ChangeNotifier {
   String _searchQuery = '';
 
   final SocketService socketService = SocketService();
+  final HiveService hiveService = HiveService();
 
-  // Cache pour les badges non lus
-  final Map<String, int> _unreadCounts = {};
+  // Cache pour les badges non lus (par userId)
+  final Map<String, Map<String, int>> _userUnreadCounts = {};
   int _totalUnreadMessages = 0;
 
-  StreamSubscription? _conversationsSubscription;
+  StreamSubscription? _newMessageSubscription;
 
   List<Chat> get chats => _filteredChats;
   bool get isLoading => _isLoading;
@@ -35,12 +38,35 @@ class ChatListViewModel extends ChangeNotifier {
   String? get error => _error;
   ChatFilter get currentFilter => _currentFilter;
   int get totalUnreadMessages => _totalUnreadMessages;
-  int get unreadConversationsCount =>
-      _chats.where((chat) => chat.unreadCount > 0).length;
 
-  ChatListViewModel();
+  // Nombre de conversations avec messages non lus pour l'utilisateur courant
+  int get unreadConversationsCount {
+    final currentUserId = 'current_user_id_placeholder';
+    return _chats.where((chat) {
+      final userCount = chat.unreadCounts[currentUserId] ?? 0;
+      return userCount > 0;
+    }).length;
+  }
 
-  /// Charger les conversations depuis le backend
+  ChatListViewModel() {
+    _initializeSocketListeners();
+  }
+
+  /// Initialiser les écouteurs Socket.IO
+  void _initializeSocketListeners() {
+    print('🔌 Initialisation des écouteurs Socket.IO dans ChatListViewModel');
+
+    // Annuler les abonnements précédents
+    _newMessageSubscription?.cancel();
+
+    // Écouter les nouveaux messages
+    _newMessageSubscription = socketService.messageStream.listen((message) {
+      print('📨 Nouveau message reçu');
+      _handleNewMessage(message.toJson());
+    });
+  }
+
+  /// Charger les conversations
   Future<void> loadConversations({bool forceRefresh = false}) async {
     if (_isLoading && !forceRefresh) return;
 
@@ -54,25 +80,34 @@ class ChatListViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Annuler l'abonnement précédent s'il existe
-      _conversationsSubscription?.cancel();
+      print('🔄 Chargement des conversations...');
 
-      // Écouter directement les données via le Stream
-      print('🔍 Tentative d\'abonnement au conversationsStream...');
-      _conversationsSubscription = socketService.conversationsStream.listen(
-        (data) {
-          print(
-              '📩 Données brutes reçues dans ChatListViewModel : ${data.toString()}');
-          updateConversations(data);
-        },
-        onError: (error) {
-          print('❌ Erreur lors de l\'écoute des conversations : $error');
-          _error = 'Erreur de réception des données';
-          notifyListeners();
-        },
-      );
-      print(
-          '🔍 Abonnement actif dans ChatListViewModel avant réception des données');
+      // Essayer de charger depuis Hive d'abord
+      final cachedChats = await hiveService.getAllChats();
+
+      if (cachedChats.isNotEmpty && !forceRefresh) {
+        print(
+            '💾 Utilisation du cache Hive: ${cachedChats.length} conversations');
+        _updateChatsFromHive(cachedChats);
+        return;
+      }
+
+      // Sinon, demander au serveur
+      print('🌐 Demande des conversations au serveur...');
+      socketService.requestConversations();
+
+      // Attendre que les données soient sauvegardées dans Hive
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Recharger depuis Hive
+      final freshChats = await hiveService.getAllChats();
+      if (freshChats.isNotEmpty) {
+        print('✅ Conversations chargées depuis serveur: ${freshChats.length}');
+        _updateChatsFromHive(freshChats);
+      } else {
+        print('⚠️ Aucune conversation reçue du serveur');
+        _error = 'Aucune conversation disponible';
+      }
     } catch (e) {
       _error = 'Erreur de chargement: ${e.toString()}';
       print('❌ Erreur loadConversations: $e');
@@ -83,32 +118,73 @@ class ChatListViewModel extends ChangeNotifier {
     }
   }
 
-  /// Mettre à jour les conversations avec les données du backend
+  /// Mettre à jour les chats depuis Hive
+  void _updateChatsFromHive(List<Chat> chats) {
+    // Trier par dernier message (plus récent en premier)
+    chats.sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
+
+    _chats = chats;
+    _calculateUnreadCounts();
+    _applyFilter(_currentFilter);
+    _applySearch(_searchQuery);
+    print('✅ ${_chats.length} conversations mises à jour depuis Hive');
+    notifyListeners();
+  }
+
+  /// Mettre à jour les conversations
   void updateConversations(Map<String, dynamic> data) {
     try {
-      print(
-          '🔄 Mise à jour des conversations dans ChatListViewModel avec ${data.length} éléments');
+      print('🔄 Mise à jour des conversations');
+
+      // Vérifier la structure des données
+      bool hasValidData = false;
+
+      if (data['conversations'] is List &&
+          (data['conversations'] as List).isNotEmpty) {
+        hasValidData = true;
+        print(
+            '✅ Format 1: conversations array avec ${(data['conversations'] as List).length} éléments');
+      } else if (data['categorized'] is Map) {
+        final categorized = data['categorized'] as Map<String, dynamic>;
+        int total = 0;
+        categorized.forEach((key, value) {
+          if (value is List) total += value.length;
+        });
+        if (total > 0) {
+          hasValidData = true;
+          print('✅ Format 2: categorized avec $total conversations');
+        }
+      } else if (data['type'] == 'single' && data['data'] != null) {
+        hasValidData = true;
+        print('✅ Format 3: conversation unique');
+      }
+
+      if (!hasValidData) {
+        print('⚠️ Données sans conversations valides');
+        _error = 'Aucune conversation disponible';
+        notifyListeners();
+        return;
+      }
 
       // Réinitialiser l'état
       _error = null;
       _isLoading = false;
       _isRefreshing = false;
 
-      // Extraire les conversations depuis les données
+      // Extraire les conversations
       final List<Chat> newChats = _extractConversationsFromData(data);
 
-      // Mettre à jour les chats
+      // Mettre à jour
       _chats = newChats;
 
-      // Calculer le total des messages non lus
+      // Calculer les totaux
       _calculateUnreadCounts();
 
-      // Appliquer les filtres actuels
+      // Appliquer filtres
       _applyFilter(_currentFilter);
       _applySearch(_searchQuery);
 
-      print(
-          '✅ ${_chats.length} conversations chargées, $_totalUnreadMessages messages non lus');
+      print('✅ ${_chats.length} conversations chargées');
       notifyListeners();
     } catch (e) {
       _error = 'Erreur traitement données: ${e.toString()}';
@@ -117,38 +193,38 @@ class ChatListViewModel extends ChangeNotifier {
     }
   }
 
-  /// Extraire les conversations des données backend
+  /// Extraire les conversations
   List<Chat> _extractConversationsFromData(Map<String, dynamic> data) {
     final List<Chat> conversations = [];
 
-    // Format 1: conversationsLoaded (array direct)
+    print(
+        '🔍 ChatListViewModel - Structure des données: ${data.keys.toList()}');
+    print(
+        '🔍 ChatListViewModel - Type de conversations: ${data['conversations']?.runtimeType}');
+
+    // Format 1: array direct
     if (data['conversations'] is List) {
       final conversationsData = data['conversations'] as List<dynamic>;
 
       for (final convData in conversationsData) {
         try {
-          final chat = _convertBackendConversationToChat(convData);
-          if (chat != null) {
-            conversations.add(chat);
-          }
+          final chat = Chat.fromJson(convData); // ✅ Utilise le nouveau fromJson
+          conversations.add(chat);
         } catch (e) {
-          print('⚠️ Erreur conversion conversation: $e');
+          print('⚠️ Erreur conversion conversation: $e - Data: $convData');
         }
       }
     }
-    // Format 2: categorized conversations
+    // Format 2: categorized
     else if (data['categorized'] is Map<String, dynamic>) {
       final categorized = data['categorized'] as Map<String, dynamic>;
 
-      // Parcourir toutes les catégories
       for (final category in categorized.values) {
         if (category is List) {
           for (final convData in category) {
             try {
-              final chat = _convertBackendConversationToChat(convData);
-              if (chat != null) {
-                conversations.add(chat);
-              }
+              final chat = Chat.fromJson(convData);
+              conversations.add(chat);
             } catch (e) {
               print('⚠️ Erreur conversion conversation catégorisée: $e');
             }
@@ -156,133 +232,56 @@ class ChatListViewModel extends ChangeNotifier {
         }
       }
     }
-    // Format 3: conversationLoaded (single)
-    else if (data['type'] == 'single') {
+    // Format 3: single
+    else if (data['type'] == 'single' && data['data'] != null) {
       try {
-        final chat = _convertBackendConversationToChat(data['data']);
-        if (chat != null) {
-          conversations.add(chat);
-        }
+        final chat = Chat.fromJson(data['data']);
+        conversations.add(chat);
       } catch (e) {
         print('⚠️ Erreur conversion conversation unique: $e');
       }
     }
-
-    // Trier par dernier message (plus récent en premier)
-    conversations.sort((a, b) {
-      final aTime = a.lastMessageTime ?? DateTime(1970);
-      final bTime = b.lastMessageTime ?? DateTime(1970);
-      return bTime.compareTo(aTime);
-    });
-
-    return conversations;
-  }
-
-  /// Convertir une conversation backend en modèle Chat
-  Chat? _convertBackendConversationToChat(dynamic convData) {
-    if (convData is! Map<String, dynamic>) return null;
-
-    final data = Map<String, dynamic>.from(convData);
-
-    // Déterminer le type de conversation
-    final ChatType type;
-    switch (data['type']?.toString().toUpperCase()) {
-      case 'GROUP':
-        type = ChatType.group;
-        break;
-      case 'BROADCAST':
-        type = ChatType.broadcast;
-        break;
-      default:
-        type = ChatType.personal;
-    }
-
-    // Extraire le nom
-    String name = data['name']?.toString() ?? 'Conversation';
-
-    // Pour les conversations personnelles, utiliser le nom de l'autre participant
-    if (type == ChatType.personal && data['userMetadata'] is Map) {
-      final metadata = Map<String, dynamic>.from(data['userMetadata']);
-      if (metadata.isNotEmpty) {
-        final firstUser = metadata.values.first;
-        if (firstUser is Map) {
-          final userData = Map<String, dynamic>.from(firstUser);
-          name = '${userData['prenom']} ${userData['nom']}'.trim();
-          if (name.isEmpty) {
-            name = userData['matricule']?.toString() ?? 'Utilisateur';
+    // Format 4: Map direct (clé = ID conversation, valeur = données conversation)
+    else if (data.isNotEmpty && data.values.first is Map<String, dynamic>) {
+      print(
+          '🔄 ChatListViewModel - Tentative de traitement comme Map de conversations');
+      for (final convData in data.values) {
+        if (convData is Map<String, dynamic>) {
+          try {
+            final chat = Chat.fromJson(convData);
+            conversations.add(chat);
+            print('✅ ChatListViewModel - Conversation extraite: ${chat.name}');
+          } catch (e) {
+            print(
+                '⚠️ ChatListViewModel - Erreur conversion conversation Map: $e');
           }
         }
       }
     }
 
-    // Extraire les participants
-    final List<Map<String, dynamic>> participants = [];
-    if (data['participants'] is List) {
-      for (final participant in data['participants'] as List<dynamic>) {
-        if (participant is Map<String, dynamic>) {
-          participants.add(Map<String, dynamic>.from(participant));
-        }
-      }
-    }
+    // Trier par dernier message
+    conversations.sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
 
-    // Extraire le dernier message
-    String lastMessage = '';
-    DateTime? lastMessageTime;
-    if (data['lastMessage'] is Map<String, dynamic>) {
-      final lastMsg = Map<String, dynamic>.from(data['lastMessage']);
-      lastMessage = lastMsg['content']?.toString() ?? '';
-
-      if (lastMsg['timestamp'] != null) {
-        try {
-          lastMessageTime = DateTime.parse(lastMsg['timestamp'].toString());
-        } catch (e) {
-          print('⚠️ Erreur parsing timestamp: $e');
-        }
-      }
-    }
-
-    // Compter les messages non lus
-    int unreadCount = 0;
-    if (data['unreadCount'] != null) {
-      unreadCount = (data['unreadCount'] as num).toInt();
-    } else if (data['stats'] is Map) {
-      final stats = Map<String, dynamic>.from(data['stats']);
-      unreadCount = stats['unreadMessages'] as int? ?? 0;
-    }
-
-    // Mettre à jour le cache des non lus
-    final conversationId =
-        data['_id']?.toString() ?? data['id']?.toString() ?? '';
-    if (conversationId.isNotEmpty) {
-      _unreadCounts[conversationId] = unreadCount;
-    }
-
-    return Chat(
-      id: conversationId,
-      name: name,
-      type: type,
-      avatarUrl:
-          data['avatar']?.toString() ?? '', // Fournir une valeur par défaut
-      time: data['time']?.toString() ?? '', // Fournir une valeur par défaut
-
-      // Supprimer la méthode inutile `useSocketService`
-      // et laisser le champ inutilisé pour le moment.
-
-      lastMessage: lastMessage,
-      lastMessageTime: lastMessageTime,
-      unreadCount: unreadCount,
-      participants: participants,
-      metadata: data,
-    );
+    return conversations;
   }
 
   /// Calculer les totaux de messages non lus
   void _calculateUnreadCounts() {
     _totalUnreadMessages = 0;
+    _userUnreadCounts.clear();
+
+    // TODO: Remplacer par le userId de l'utilisateur connecté
+    final currentUserId = 'current_user_id_placeholder';
 
     for (final chat in _chats) {
-      _totalUnreadMessages += chat.unreadCount;
-      _unreadCounts[chat.id] = chat.unreadCount;
+      final userUnread = chat.unreadCounts[currentUserId] ?? 0;
+      _totalUnreadMessages += userUnread;
+
+      // Stocker par conversation et utilisateur
+      if (!_userUnreadCounts.containsKey(chat.id)) {
+        _userUnreadCounts[chat.id] = {};
+      }
+      _userUnreadCounts[chat.id]![currentUserId] = userUnread;
     }
   }
 
@@ -299,23 +298,31 @@ class ChatListViewModel extends ChangeNotifier {
         _filteredChats = List.from(_chats);
         break;
       case ChatFilter.unread:
-        _filteredChats = _chats.where((chat) => chat.unreadCount > 0).toList();
+        // TODO: Filtrer par userId connecté
+        final currentUserId = 'current_user_id_placeholder';
+        _filteredChats = _chats.where((chat) {
+          return (chat.unreadCounts[currentUserId] ?? 0) > 0;
+        }).toList();
         break;
       case ChatFilter.groups:
         _filteredChats =
             _chats.where((chat) => chat.type == ChatType.group).toList();
         break;
+      case ChatFilter.broadcasts:
+        _filteredChats =
+            _chats.where((chat) => chat.type == ChatType.broadcast).toList();
+        break;
+      case ChatFilter.calls:
+        _filteredChats =
+            _chats.where((chat) => chat.type == ChatType.channel).toList();
+        break;
       case ChatFilter.myService:
-        // TODO: Implémenter basé sur le ministère/département de l'utilisateur
+        // TODO: Implémenter basé sur le ministère
         _filteredChats = List.from(_chats);
         break;
       case ChatFilter.allServices:
         // TODO: Implémenter filtrage par service
         _filteredChats = List.from(_chats);
-        break;
-      case ChatFilter.calls:
-        // TODO: Filtrer les conversations avec appels
-        _filteredChats = _chats.where((chat) => false).toList(); // Temporaire
         break;
     }
   }
@@ -335,21 +342,33 @@ class ChatListViewModel extends ChangeNotifier {
 
     final searchLower = query.toLowerCase();
     _filteredChats = _chats.where((chat) {
-      return chat.name.toLowerCase().contains(searchLower) ||
-          chat.lastMessage.toLowerCase().contains(searchLower) ||
-          chat.participants.any((participant) {
-            final name =
-                '${participant['prenom']} ${participant['nom']}'.toLowerCase();
-            return name.contains(searchLower);
-          });
+      // Recherche dans le nom d'affichage
+      if (chat.displayName.toLowerCase().contains(searchLower)) {
+        return true;
+      }
+
+      // Recherche dans le dernier message
+      if (chat.lastMessage?.content.toLowerCase().contains(searchLower) ??
+          false) {
+        return true;
+      }
+
+      // Recherche dans les participants
+      for (final participant in chat.userMetadata) {
+        if (participant.name.toLowerCase().contains(searchLower)) {
+          return true;
+        }
+      }
+
+      return false;
     }).toList();
   }
 
-  /// Gérer la réception d'un nouveau message
-  void onNewMessageReceived(Map<String, dynamic> messageData) {
+  /// Gérer un nouveau message
+  void _handleNewMessage(Map<String, dynamic> messageData) {
     try {
-      final message = messageData;
-      final conversationId = message['conversationId']?.toString();
+      final conversationId = messageData['conversationId']?.toString();
+      final senderId = messageData['senderId']?.toString();
 
       if (conversationId == null || conversationId.isEmpty) return;
 
@@ -360,16 +379,30 @@ class ChatListViewModel extends ChangeNotifier {
         // Mettre à jour la conversation existante
         final chat = _chats[index];
 
-        // Incrémenter le compteur non lu
-        final newUnreadCount = chat.unreadCount + 1;
-        _unreadCounts[conversationId] = newUnreadCount;
-        _totalUnreadMessages++;
+        // Créer un nouveau LastMessage
+        final lastMessage = LastMessage(
+          content: messageData['content']?.toString() ?? 'Nouveau message',
+          type: messageData['type']?.toString() ?? 'TEXT',
+          senderId: senderId ?? '',
+          senderName: messageData['senderName']?.toString(),
+          timestamp: DateTime.now(),
+        );
 
-        // Mettre à jour le dernier message
+        // Mettre à jour les unread counts
+        final newUnreadCounts = Map<String, int>.from(chat.unreadCounts);
+        // Incrémenter pour tous les participants sauf l'expéditeur
+        for (final participant in chat.participants) {
+          if (participant != senderId) {
+            newUnreadCounts[participant] =
+                (newUnreadCounts[participant] ?? 0) + 1;
+          }
+        }
+
+        // Mettre à jour la conversation
         final updatedChat = chat.copyWith(
-          lastMessage: message['content']?.toString() ?? '',
-          lastMessageTime: DateTime.now(),
-          unreadCount: newUnreadCount,
+          lastMessage: lastMessage,
+          lastMessageAt: DateTime.now(),
+          unreadCounts: newUnreadCounts,
         );
 
         _chats[index] = updatedChat;
@@ -378,14 +411,19 @@ class ChatListViewModel extends ChangeNotifier {
         _chats.removeAt(index);
         _chats.insert(0, updatedChat);
 
+        // Recalculer les totaux
+        _calculateUnreadCounts();
+
         // Re-appliquer les filtres
         _applyFilter(_currentFilter);
         _applySearch(_searchQuery);
 
         notifyListeners();
 
-        print(
-            '📥 Nouveau message dans "${chat.name}", non lus: $newUnreadCount');
+        print('✅ Message ajouté à "${chat.displayName}"');
+      } else {
+        print('🆕 Nouvelle conversation détectée, rechargement...');
+        loadConversations();
       }
     } catch (e) {
       print('❌ Erreur traitement nouveau message: $e');
@@ -396,23 +434,60 @@ class ChatListViewModel extends ChangeNotifier {
   void markConversationAsRead(String conversationId) {
     final index = _chats.indexWhere((chat) => chat.id == conversationId);
 
-    if (index != -1 && _chats[index].unreadCount > 0) {
+    if (index != -1) {
       final chat = _chats[index];
-      final previousUnread = chat.unreadCount;
+      // TODO: Remplacer par le userId connecté
+      final currentUserId = 'current_user_id_placeholder';
 
-      // Mettre à jour localement
-      _chats[index] = chat.copyWith(unreadCount: 0);
-      _unreadCounts[conversationId] = 0;
-      _totalUnreadMessages -= previousUnread;
+      if (chat.unreadCounts[currentUserId] != null &&
+          chat.unreadCounts[currentUserId]! > 0) {
+        // Mettre à jour localement
+        final newUnreadCounts = Map<String, int>.from(chat.unreadCounts);
+        final previousUnread = newUnreadCounts[currentUserId] ?? 0;
+        newUnreadCounts[currentUserId] = 0;
 
-      // Re-appliquer les filtres
-      _applyFilter(_currentFilter);
-      _applySearch(_searchQuery);
+        final updatedChat = chat.copyWith(unreadCounts: newUnreadCounts);
+        _chats[index] = updatedChat;
 
-      notifyListeners();
+        // Mettre à jour le cache
+        if (_userUnreadCounts.containsKey(conversationId)) {
+          _userUnreadCounts[conversationId]![currentUserId] = 0;
+        }
 
-      print('✅ Conversation "${chat.name}" marquée comme lue');
+        // Mettre à jour le total
+        _totalUnreadMessages -= previousUnread;
+
+        // Re-appliquer les filtres
+        _applyFilter(_currentFilter);
+        _applySearch(_searchQuery);
+
+        notifyListeners();
+
+        print('✅ Conversation "${chat.displayName}" marquée comme lue');
+
+        // TODO: Notifier le serveur via socket
+        // socketService.markConversationAsRead(conversationId, currentUserId);
+      }
     }
+  }
+
+  /// Obtenir les conversations non lues pour un utilisateur
+  List<Chat> getUnreadChatsForUser(String userId) {
+    return _chats.where((chat) {
+      return (chat.unreadCounts[userId] ?? 0) > 0;
+    }).toList();
+  }
+
+  int getUnreadCountForConversation(String conversationId, String userId) {
+    final chat = _chats.firstWhere((c) => c.id == conversationId,
+        orElse: () => Chat.empty());
+    return chat.unreadCounts[userId] ?? 0;
+  }
+
+  /// Obtenir une conversation par ID
+  Chat? getChatById(String chatId) {
+    return _chats.firstWhere((chat) => chat.id == chatId,
+        orElse: () => Chat.empty());
   }
 
   /// Effacer les erreurs
@@ -421,23 +496,20 @@ class ChatListViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Définir une erreur explicitement
+  /// Définir une erreur
   void setError(String errorMessage) {
     _error = errorMessage;
     notifyListeners();
   }
 
-  /// Obtenir le nombre de messages non lus pour une conversation
-  int getUnreadCountForConversation(String conversationId) {
-    return _unreadCounts[conversationId] ?? 0;
-  }
-
   /// Nettoyer les ressources
+  @override
   void dispose() {
+    print('🧹 Nettoyage ChatListViewModel');
+    _newMessageSubscription?.cancel();
     _chats.clear();
     _filteredChats.clear();
-    _unreadCounts.clear();
-    _conversationsSubscription?.cancel();
+    _userUnreadCounts.clear();
     super.dispose();
   }
 }

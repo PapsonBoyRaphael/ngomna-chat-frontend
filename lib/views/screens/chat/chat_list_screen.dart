@@ -253,10 +253,21 @@ class __ChatListContentState extends State<_ChatListContent> {
           },
         );
         break;
+      case ChatType.channel:
+        // TODO: Navigate to channel screen
+        Navigator.pushNamed(
+          context,
+          AppRoutes.chat, // Placeholder
+          arguments: {
+            'chatId': chat.id,
+            'conversationData': chat.toJson(),
+          },
+        );
+        break;
       case ChatType.personal:
         // Extraire les infos du participant
         final otherParticipant =
-            chat.participants.isNotEmpty ? chat.participants.first : null;
+            chat.userMetadata.isNotEmpty ? chat.userMetadata.first : null;
 
         Navigator.pushNamed(
           context,
@@ -266,14 +277,18 @@ class __ChatListContentState extends State<_ChatListContent> {
             'conversationId': chat.id,
             'user': otherParticipant != null
                 ? User(
-                    id: otherParticipant['id'] ?? chat.id,
-                    matricule: otherParticipant['matricule'] ?? chat.id,
-                    nom: otherParticipant['nom'] ?? chat.name.split(' ').first,
-                    prenom:
-                        otherParticipant['prenom'] ?? chat.name.split(' ').last,
-                    avatarUrl: otherParticipant['avatarUrl'] ?? chat.avatarUrl,
+                    id: otherParticipant.userId,
+                    matricule: otherParticipant.metadataId,
+                    nom: otherParticipant.name,
+                    prenom: '',
+                    avatarUrl: otherParticipant.avatar,
                   )
-                : User.empty(),
+                : User(
+                    id: '',
+                    matricule: '',
+                    nom: '',
+                    prenom: '',
+                  ),
             'conversationData': chat.toJson(),
           },
         );
@@ -293,6 +308,8 @@ class __ChatListContentState extends State<_ChatListContent> {
         return 'All Services';
       case ChatFilter.groups:
         return 'Groups';
+      case ChatFilter.broadcasts:
+        return 'Broadcasts';
       case ChatFilter.calls:
         return 'Calls';
     }

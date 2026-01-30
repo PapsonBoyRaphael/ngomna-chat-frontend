@@ -47,7 +47,11 @@ class SelectableContactTile extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 22,
-          backgroundImage: AssetImage(contact.avatarUrl),
+          backgroundImage: AssetImage(
+            (contact.avatarUrl != null && contact.avatarUrl!.isNotEmpty)
+                ? contact.avatarUrl!
+                : 'assets/avatars/default_avatar.png',
+          ),
         ),
         if (contact.isOnline)
           Positioned(

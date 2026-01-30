@@ -1,9 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
 import 'package:ngomna_chat/data/repositories/auth_repository.dart';
+import 'package:hive/hive.dart';
 
 class AuthViewModel extends ChangeNotifier {
   final AuthRepository _repository;
+
+  // Hive box for persistent storage
+  late Box _authBox;
 
   // Authentication state
   User? _currentUser;
@@ -55,14 +59,20 @@ class AuthViewModel extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
+      // Open Hive box
+      _authBox = await Hive.openBox('authBox');
+
       // Check if user is already authenticated
-      final isAuth = await _repository.isAuthenticated();
+      final isAuth = _authBox.get('isAuthenticated', defaultValue: false);
       _isAuthenticated = isAuth;
 
       if (isAuth) {
-        // Load current user from storage
-        _currentUser = await _repository.getCurrentUser();
-        _matricule = _currentUser?.matricule;
+        // Load current user from Hive storage
+        final userData = _authBox.get('currentUser');
+        if (userData != null) {
+          _currentUser = User.fromJson(Map<String, dynamic>.from(userData));
+          _matricule = _currentUser?.matricule;
+        }
       }
 
       // Check gateway health (optional)
@@ -125,6 +135,10 @@ class AuthViewModel extends ChangeNotifier {
       _matricule = _currentUser?.matricule;
       _isAuthenticated = true;
       _successMessage = 'Connexion réussie !';
+
+      // Save authentication state to Hive
+      _authBox.put('isAuthenticated', true);
+      _authBox.put('currentUser', _currentUser!.toJson());
 
       print('✅ Utilisateur connecté : ${_currentUser?.fullName}');
 
@@ -261,6 +275,10 @@ class AuthViewModel extends ChangeNotifier {
 
       _successMessage = 'Déconnexion réussie';
       _error = null;
+
+      // Clear Hive storage
+      _authBox.put('isAuthenticated', false);
+      _authBox.delete('currentUser');
 
       print('👋 User logged out');
     } catch (e) {

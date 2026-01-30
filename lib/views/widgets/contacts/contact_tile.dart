@@ -66,7 +66,11 @@ class ContactTile extends StatelessWidget {
     return Stack(
       children: [
         CircleAvatar(
-          backgroundImage: AssetImage(contact.avatarUrl),
+          backgroundImage: AssetImage(
+            (contact.avatarUrl != null && contact.avatarUrl!.isNotEmpty)
+                ? contact.avatarUrl!
+                : 'assets/avatars/default_avatar.png',
+          ),
           radius: 22,
         ),
         if (contact.isOnline)

@@ -1,17 +1,44 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:ngomna_chat/providers/app_providers.dart';
 import 'package:ngomna_chat/core/routes/app_routes.dart';
 import 'package:ngomna_chat/core/constants/app_fonts.dart';
-import 'package:ngomna_chat/data/services/api_service.dart';
-import 'package:ngomna_chat/data/services/storage_service.dart';
-import 'package:ngomna_chat/data/services/socket_service.dart';
-import 'package:ngomna_chat/data/repositories/auth_repository.dart';
-import 'package:ngomna_chat/data/repositories/message_repository.dart';
-import 'package:ngomna_chat/viewmodels/auth_viewmodel.dart';
-import 'package:ngomna_chat/viewmodels/message_viewmodel.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
+import 'package:ngomna_chat/data/models/message_model.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔥 Initialiser Hive
+  await Hive.initFlutter();
+
+  // Enregistrer les adapters Hive
+  Hive.registerAdapter(ChatAdapter());
+  Hive.registerAdapter(ChatTypeAdapter()); // Adapter pour l'enum ChatType
+  Hive.registerAdapter(ParticipantMetadataAdapter());
+  Hive.registerAdapter(NotificationSettingsAdapter());
+  Hive.registerAdapter(LastMessageAdapter());
+  Hive.registerAdapter(ChatSettingsAdapter());
+  Hive.registerAdapter(ChatMetadataAdapter());
+  Hive.registerAdapter(AuditLogEntryAdapter());
+  Hive.registerAdapter(ChatStatsAdapter());
+  Hive.registerAdapter(ChatIntegrationsAdapter());
+  Hive.registerAdapter(MessageAdapter());
+  Hive.registerAdapter(MessageTypeAdapter()); // Adapter pour l'enum MessageType
+  Hive.registerAdapter(
+      MessageStatusAdapter()); // Adapter pour l'enum MessageStatus
+  Hive.registerAdapter(
+      MessagePriorityAdapter()); // Adapter pour l'enum MessagePriority
+  Hive.registerAdapter(MessageMetadataAdapter());
+  Hive.registerAdapter(TechnicalMetadataAdapter());
+  Hive.registerAdapter(KafkaMetadataAdapter());
+  Hive.registerAdapter(RedisMetadataAdapter());
+  Hive.registerAdapter(DeliveryMetadataAdapter());
+  Hive.registerAdapter(ContentMetadataAdapter());
+
+  // 🔥 Initialiser les services via AppProviders
+  await AppProviders.initializeServices();
+
   runApp(const MyApp());
 }
 
@@ -20,53 +47,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        // 🔧 Services (singletons)
-        Provider<ApiService>(
-          create: (_) => ApiService(),
-          dispose: (_, service) {}, // Dio n'a pas besoin de dispose
-        ),
-        Provider<StorageService>(
-          create: (_) => StorageService(),
-        ),
-
-        // 🌐 SocketService (singleton avec dispose important)
-        Provider<SocketService>(
-          create: (_) => SocketService(),
-          dispose: (_, service) => service.dispose(),
-        ),
-
-        // 📦 Repositories
-        Provider<AuthRepository>(
-          create: (context) => AuthRepository(
-            apiService: context.read<ApiService>(),
-            storageService: context.read<StorageService>(),
-          ),
-        ),
-
-        Provider<MessageRepository>(
-          create: (context) => MessageRepository(
-            socketService: context.read<SocketService>(),
-            apiService: context.read<ApiService>(),
-          ),
-          dispose: (_, repo) => repo.dispose(),
-        ),
-
-        // 🧠 ViewModels (ChangeNotifier)
-        ChangeNotifierProvider<AuthViewModel>(
-          create: (context) => AuthViewModel(
-            context.read<AuthRepository>(),
-          ),
-          lazy: false, // Initialiser tout de suite pour vérifier l'auth
-        ),
-
-        ChangeNotifierProvider<MessageViewModel>(
-          create: (context) => MessageViewModel(
-            context.read<MessageRepository>(),
-          ),
-        ),
-      ],
+    return AppProviders.wrapWithProviders(
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'NGOMNA Chat',

@@ -47,8 +47,9 @@ class BroadcastViewModel extends ChangeNotifier {
       id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
       conversationId: broadcastId,
       senderId: user?.matricule ?? 'unknown',
+      receiverId: '', // Broadcast n'a pas de destinataire spécifique
       content: text,
-      timestamp: DateTime.now(),
+      createdAt: DateTime.now(),
       status: MessageStatus.sending,
       isMe: true,
     );

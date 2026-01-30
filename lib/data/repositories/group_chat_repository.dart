@@ -11,8 +11,9 @@ class GroupChatRepository {
         id: '1',
         conversationId: groupId,
         senderId: 'user2',
+        receiverId: groupId, // Pour les groupes, receiverId = groupId
         content: "I'm looking for a designer",
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
+        createdAt: DateTime.now().subtract(const Duration(hours: 2)),
         isMe: false,
         sender: User(
           id: 'user2',
@@ -27,8 +28,9 @@ class GroupChatRepository {
         id: '2',
         conversationId: groupId,
         senderId: 'user3',
+        receiverId: groupId,
         content: "UI/UX",
-        timestamp:
+        createdAt:
             DateTime.now().subtract(const Duration(hours: 1, minutes: 55)),
         isMe: false,
         sender: User(
@@ -44,8 +46,9 @@ class GroupChatRepository {
         id: '3',
         conversationId: groupId,
         senderId: 'me',
+        receiverId: groupId,
         content: "You are looking in the right place\nI am a UI/UX designer",
-        timestamp: DateTime.now().subtract(const Duration(hours: 1)),
+        createdAt: DateTime.now().subtract(const Duration(hours: 1)),
         isMe: true,
         sender: User(
           id: 'me',
@@ -66,8 +69,9 @@ class GroupChatRepository {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       conversationId: groupId,
       senderId: 'me',
+      receiverId: groupId, // Pour les groupes, receiverId = groupId
       content: text,
-      timestamp: DateTime.now(),
+      createdAt: DateTime.now(),
       isMe: true,
       sender: User(
         id: 'me',

@@ -8,6 +8,7 @@ import 'package:ngomna_chat/views/widgets/chat/message_bubble.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_input.dart';
 import 'package:ngomna_chat/controllers/chat_input_controller.dart'
     as controller;
+import 'package:ngomna_chat/core/utils/date_formatter.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'dart:async';
 
@@ -434,7 +435,9 @@ class _ChatScreenContent extends StatelessWidget {
     );
   }
 
-  Widget _buildDateSeparator(DateTime date) {
+  Widget _buildDateSeparator(DateTime? date) {
+    if (date == null) return const SizedBox.shrink();
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 16),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -454,17 +457,6 @@ class _ChatScreenContent extends StatelessWidget {
   }
 
   String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
-    final messageDate = DateTime(date.year, date.month, date.day);
-
-    if (messageDate == today) {
-      return 'Aujourd\'hui';
-    } else if (messageDate == yesterday) {
-      return 'Hier';
-    } else {
-      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-    }
+    return DateFormatter.formatDateSeparator(date);
   }
 }

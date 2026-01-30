@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/core/constants/app_fonts.dart';
+import 'package:ngomna_chat/core/utils/date_formatter.dart';
 
 class ChatTile extends StatelessWidget {
   final Chat chat;
@@ -24,7 +25,7 @@ class ChatTile extends StatelessWidget {
             _buildAvatar(),
             const SizedBox(width: 14),
             _buildContent(),
-            if (chat.time.isNotEmpty) _buildTime(),
+            _buildTime(),
           ],
         ),
       ),
@@ -38,10 +39,20 @@ class ChatTile extends StatelessWidget {
           radius: 26,
           backgroundColor: const Color(0xFFEDEDED),
           child: chat.type == ChatType.broadcast
-              ? Image.asset(chat.avatarUrl, width: 40, height: 40)
+              ? Image.asset(
+                  (chat.avatarUrl != null && chat.avatarUrl!.isNotEmpty)
+                      ? chat.avatarUrl!
+                      : 'assets/avatars/group.png',
+                  width: 40,
+                  height: 40,
+                )
               : null,
           backgroundImage: chat.type != ChatType.broadcast
-              ? AssetImage(chat.avatarUrl)
+              ? AssetImage(
+                  (chat.avatarUrl != null && chat.avatarUrl!.isNotEmpty)
+                      ? chat.avatarUrl!
+                      : 'assets/avatars/default_avatar.png',
+                )
               : null,
         ),
         if (chat.isOnline)
@@ -68,10 +79,10 @@ class ChatTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            chat.name,
+            chat.displayName,
             style: TextStyle(
               fontSize: 17,
-              fontWeight: chat.name == chat.name.toUpperCase()
+              fontWeight: chat.displayName == chat.displayName.toUpperCase()
                   ? FontWeight.w800
                   : FontWeight.w600,
               color: const Color(0xFF1F1F1F),
@@ -80,7 +91,7 @@ class ChatTile extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            chat.lastMessage,
+            chat.lastMessage?.content ?? 'No message',
             style: TextStyle(
               fontSize: 16,
               color: chat.isUnread
@@ -98,7 +109,7 @@ class ChatTile extends StatelessWidget {
 
   Widget _buildTime() {
     return Text(
-      chat.time,
+      DateFormatter.formatMessageDate(chat.lastMessageAt),
       style: const TextStyle(
         fontSize: 12,
         color: Color(0xFF4CAF50),

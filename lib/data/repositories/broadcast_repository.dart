@@ -16,8 +16,9 @@ class BroadcastRepository {
         id: '1',
         conversationId: broadcastId,
         senderId: user?.matricule ?? 'me',
+        receiverId: '', // Broadcast n'a pas de destinataire spécifique
         content: "You are looking in the right place\nI am a UI/UX designer",
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
+        createdAt: DateTime.now().subtract(const Duration(hours: 2)),
         status: MessageStatus.delivered,
         isMe: true,
       ),
@@ -25,8 +26,9 @@ class BroadcastRepository {
         id: '2',
         conversationId: broadcastId,
         senderId: user?.matricule ?? 'me',
+        receiverId: '', // Broadcast n'a pas de destinataire spécifique
         content: "I will call you to discuss",
-        timestamp: DateTime.now().subtract(const Duration(hours: 1)),
+        createdAt: DateTime.now().subtract(const Duration(hours: 1)),
         status: MessageStatus.read,
         isMe: true,
       ),
@@ -42,8 +44,9 @@ class BroadcastRepository {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       conversationId: broadcastId,
       senderId: user?.matricule ?? 'me',
+      receiverId: '', // Broadcast n'a pas de destinataire spécifique
       content: text,
-      timestamp: DateTime.now(),
+      createdAt: DateTime.now(),
       status: MessageStatus.sending,
       isMe: true,
     );

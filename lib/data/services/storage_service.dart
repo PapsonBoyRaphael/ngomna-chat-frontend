@@ -1,9 +1,10 @@
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive/hive.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
 
 class StorageService {
-  // Keys for SharedPreferences
+  // Keys for Hive storage
+  static const String _boxName = 'storageBox';
   static const String _keyAccessToken = 'access_token';
   static const String _keyRefreshToken = 'refresh_token';
   static const String _keyMatricule = 'matricule';
@@ -20,6 +21,13 @@ class StorageService {
 
   StorageService._internal();
 
+  late Box _box;
+
+  /// Initialize Hive box
+  Future<void> initialize() async {
+    _box = await Hive.openBox(_boxName);
+  }
+
   // 🔐 Token Management
 
   /// Save both access and refresh tokens
@@ -27,60 +35,47 @@ class StorageService {
     required String accessToken,
     required String refreshToken,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await Future.wait([
-      prefs.setString(_keyAccessToken, accessToken),
-      prefs.setString(_keyRefreshToken, refreshToken),
-      prefs.setString(_keyLastLogin, DateTime.now().toIso8601String()),
-    ]);
+    await _box.put(_keyAccessToken, accessToken);
+    await _box.put(_keyRefreshToken, refreshToken);
+    await _box.put(_keyLastLogin, DateTime.now().toIso8601String());
   }
 
   /// Get access token
-  Future<String?> getAccessToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyAccessToken);
+  String? getAccessToken() {
+    return _box.get(_keyAccessToken);
   }
 
   /// Get refresh token
-  Future<String?> getRefreshToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyRefreshToken);
+  String? getRefreshToken() {
+    return _box.get(_keyRefreshToken);
   }
 
   /// Check if user has tokens (is logged in)
-  Future<bool> hasTokens() async {
-    final accessToken = await getAccessToken();
+  bool hasTokens() {
+    final accessToken = getAccessToken();
     return accessToken != null && accessToken.isNotEmpty;
   }
 
   /// Clear all tokens (logout)
   Future<void> clearTokens() async {
-    final prefs = await SharedPreferences.getInstance();
-    await Future.wait([
-      prefs.remove(_keyAccessToken),
-      prefs.remove(_keyRefreshToken),
-    ]);
+    await _box.delete(_keyAccessToken);
+    await _box.delete(_keyRefreshToken);
   }
 
   // 👤 User Management
 
   /// Save complete user object
   Future<void> saveUser(User user) async {
-    final prefs = await SharedPreferences.getInstance();
-    final userJson = jsonEncode(user.toJson());
-    await prefs.setString(_keyUserData, userJson);
+    final userJson = user.toJson();
+    await _box.put(_keyUserData, userJson);
   }
 
   /// Get saved user object
-  Future<User?> getUser() async {
+  User? getUser() {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userJson = prefs.getString(_keyUserData);
-
+      final userJson = _box.get(_keyUserData);
       if (userJson == null) return null;
-
-      final userMap = jsonDecode(userJson) as Map<String, dynamic>;
-      return User.fromJson(userMap);
+      return User.fromJson(Map<String, dynamic>.from(userJson));
     } catch (e) {
       print('❌ Error parsing saved user: $e');
       return null;
@@ -90,7 +85,7 @@ class StorageService {
   /// Update specific user fields
   Future<void> updateUserField(String field, dynamic value) async {
     try {
-      final user = await getUser();
+      final user = getUser();
       if (user != null) {
         final updatedUser = user.copyWithField(field, value);
         await saveUser(updatedUser);
@@ -102,41 +97,32 @@ class StorageService {
 
   /// Clear user data
   Future<void> clearUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await Future.wait([
-      prefs.remove(_keyUserData),
-      prefs.remove(_keyMatricule),
-      prefs.remove(_keyLastLogin),
-    ]);
+    await _box.delete(_keyUserData);
+    await _box.delete(_keyMatricule);
+    await _box.delete(_keyLastLogin);
   }
 
   // 📝 Matricule Management (for backward compatibility)
 
   Future<void> saveMatricule(String matricule) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyMatricule, matricule);
+    await _box.put(_keyMatricule, matricule);
   }
 
-  Future<String?> getMatricule() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyMatricule);
+  String? getMatricule() {
+    return _box.get(_keyMatricule);
   }
 
   // ⚙️ App Settings
 
   /// Save app settings
   Future<void> saveSettings(Map<String, dynamic> settings) async {
-    final prefs = await SharedPreferences.getInstance();
-    final settingsJson = jsonEncode(settings);
-    await prefs.setString(_keySettings, settingsJson);
+    await _box.put(_keySettings, settings);
   }
 
   /// Get app settings
-  Future<Map<String, dynamic>> getSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final settingsJson = prefs.getString(_keySettings);
-
-    if (settingsJson == null) {
+  Map<String, dynamic> getSettings() {
+    final settings = _box.get(_keySettings);
+    if (settings == null) {
       return {
         'notifications': true,
         'darkMode': false,
@@ -144,9 +130,8 @@ class StorageService {
         'autoDownload': false,
       };
     }
-
     try {
-      return Map<String, dynamic>.from(jsonDecode(settingsJson));
+      return Map<String, dynamic>.from(settings);
     } catch (e) {
       print('❌ Error parsing settings: $e');
       return {};
@@ -155,7 +140,7 @@ class StorageService {
 
   /// Update specific setting
   Future<void> updateSetting(String key, dynamic value) async {
-    final settings = await getSettings();
+    final settings = getSettings();
     settings[key] = value;
     await saveSettings(settings);
   }
@@ -163,8 +148,7 @@ class StorageService {
   // 🗑️ Clear all data (full logout/reset)
 
   Future<void> clearAll() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await _box.clear();
   }
 
   /// Clear only authentication data (partial clear)
@@ -175,24 +159,18 @@ class StorageService {
 
   // ℹ️ Debug & Info
 
-  Future<Map<String, dynamic>> getStorageInfo() async {
-    final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys();
-
-    final info = <String, dynamic>{
+  Map<String, dynamic> getStorageInfo() {
+    final keys = _box.keys;
+    return {
       'totalKeys': keys.length,
-      'hasAccessToken': (await getAccessToken()) != null,
-      'hasUserData': (await getUser()) != null,
-      'lastLogin': await getLastLogin(),
+      'hasAccessToken': getAccessToken() != null,
+      'hasUserData': getUser() != null,
+      'lastLogin': getLastLogin(),
     };
-
-    return info;
   }
 
-  Future<DateTime?> getLastLogin() async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastLoginStr = prefs.getString(_keyLastLogin);
-
+  DateTime? getLastLogin() {
+    final lastLoginStr = _box.get(_keyLastLogin);
     if (lastLoginStr != null) {
       try {
         return DateTime.parse(lastLoginStr);
@@ -204,17 +182,12 @@ class StorageService {
   }
 
   /// Check if user data exists and is valid
-  Future<bool> hasValidUserData() async {
-    final user = await getUser();
-    final token = await getAccessToken();
-
+  bool hasValidUserData() {
+    final user = getUser();
+    final token = getAccessToken();
     if (user == null || token == null) {
       return false;
     }
-
-    // Additional validation could be added here
-    // e.g., check token expiry, user fields validity
-
     return user.matricule != null && user.matricule!.isNotEmpty;
   }
 }

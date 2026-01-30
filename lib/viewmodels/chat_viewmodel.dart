@@ -44,8 +44,9 @@ class ChatViewModel extends ChangeNotifier {
       id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
       conversationId: chatId,
       senderId: user?.matricule ?? 'unknown',
+      receiverId: '', // Sera défini plus tard
       content: text,
-      timestamp: DateTime.now(),
+      createdAt: DateTime.now(),
       status: MessageStatus.sending,
       isMe: true,
     );
