@@ -15,17 +15,19 @@ class ChatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    print(
+        '🎨 [ChatTile] Build - ${chat.displayName}: lastMessage="${chat.lastMessage?.content}"');
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: chat.isUnread ? const Color(0xFFE8F5E9) : Colors.white,
+        color: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Row(
           children: [
             _buildAvatar(),
             const SizedBox(width: 14),
             _buildContent(),
-            _buildTime(),
+            _buildTimeAndBadge(),
           ],
         ),
       ),
@@ -80,6 +82,8 @@ class ChatTile extends StatelessWidget {
         children: [
           Text(
             chat.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 17,
               fontWeight: chat.displayName == chat.displayName.toUpperCase()
@@ -91,12 +95,11 @@ class ChatTile extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            chat.lastMessage?.content ?? 'No message',
+            (chat.lastMessage?.content ?? '').replaceAll('\n', ' '),
+            maxLines: 1,
             style: TextStyle(
               fontSize: 16,
-              color: chat.isUnread
-                  ? const Color(0xFF4CAF50)
-                  : const Color(0xFF7A7A7A),
+              color: const Color(0xFF7A7A7A),
               fontWeight: FontWeight.w400,
               fontFamily: 'Roboto',
             ),
@@ -109,12 +112,51 @@ class ChatTile extends StatelessWidget {
 
   Widget _buildTime() {
     return Text(
-      DateFormatter.formatMessageDate(chat.lastMessageAt),
+      LiveDateFormatter.formatForChatList(chat.lastMessageAt),
       style: const TextStyle(
         fontSize: 12,
         color: Color(0xFF4CAF50),
         fontWeight: FontWeight.w500,
       ),
+    );
+  }
+
+  Widget _buildTimeAndBadge() {
+    // Calculer le nombre total de messages non lus
+    final totalUnread = chat.unreadCounts.values.fold<int>(0, (a, b) => a + b);
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // ⏰ Heure
+        Text(
+          LiveDateFormatter.formatForChatList(chat.lastMessageAt),
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF4CAF50),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 6),
+        // 🔴 Badge avec nombre de messages non lus
+        if (totalUnread > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4CAF50),
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: Text(
+              totalUnread > 99 ? '99+' : '$totalUnread',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

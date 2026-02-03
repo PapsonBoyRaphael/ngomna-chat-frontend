@@ -23,6 +23,7 @@ class GroupMemberTile extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 22,
+                backgroundColor: const Color(0xFFEDEDED),
                 backgroundImage: AssetImage(avatar),
               ),
               if (isOnline)

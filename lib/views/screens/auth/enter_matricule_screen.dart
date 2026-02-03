@@ -101,19 +101,28 @@ class EnterMatriculeScreen extends StatelessWidget {
   /// Attendre l'authentification Socket.IO
   Future<bool> _waitForSocketAuthentication(SocketService socketService,
       {int timeoutSeconds = 10}) async {
-    try {
-      // Attendre le premier événement "authenticated" ou "auth_error"
-      final event = await socketService.authStream
-          .timeout(Duration(seconds: timeoutSeconds))
-          .first;
+    final completer = Completer<bool>();
 
-      return event == true; // true = authenticated, false = auth_error
+    // Écouter les événements d'authentification
+    final subscription =
+        socketService.authChangedStream.listen((isAuthenticated) {
+      if (!completer.isCompleted) {
+        completer.complete(isAuthenticated);
+      }
+    });
+
+    try {
+      // Attendre avec timeout
+      return await completer.future.timeout(Duration(seconds: timeoutSeconds));
     } on TimeoutException {
       print('⏰ Timeout authentification Socket.IO');
       return false;
     } catch (e) {
       print('❌ Erreur attente authentification: $e');
       return false;
+    } finally {
+      // Annuler l'abonnement
+      subscription.cancel();
     }
   }
 }

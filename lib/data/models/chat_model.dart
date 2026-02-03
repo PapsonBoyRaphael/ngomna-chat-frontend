@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:ngomna_chat/data/services/storage_service.dart';
 
 part 'chat_model.g.dart';
 
@@ -82,34 +83,40 @@ class Chat {
   }
 
   String get displayName {
-    print(
-        '🔍 Chat.displayName - ID: ${id}, Type: ${type}, Name: ${name}, CreatedBy: ${createdBy}');
-    print('🔍 Chat.displayName - UserMetadata length: ${userMetadata.length}');
-    for (var meta in userMetadata) {
-      print('🔍 Chat.displayName - User: ${meta.userId} -> ${meta.name}');
+    if (type == ChatType.personal && userMetadata.length >= 2) {
+      final StorageService storageService = StorageService();
+      final currentUserMatricule = storageService.getUser()?.matricule;
+
+      if (currentUserMatricule != null) {
+        final otherParticipant = userMetadata.firstWhere(
+          (meta) => meta.userId != currentUserMatricule,
+          orElse: () => userMetadata.first,
+        );
+
+        // Utiliser prénom et nom séparés pour un affichage plus naturel
+        final fullDisplayName =
+            '${otherParticipant.prenom} ${otherParticipant.nom}'.trim();
+
+        return fullDisplayName.isNotEmpty ? fullDisplayName : name;
+      }
     }
 
-    if (type == ChatType.personal && userMetadata.length >= 2) {
-      // Pour les chats privés, montrer le nom de l'autre participant
-      final otherParticipant = userMetadata.firstWhere(
-        (meta) => meta.userId != createdBy,
-        orElse: () => userMetadata.first,
-      );
-      print(
-          '🔍 Chat.displayName - Other participant: ${otherParticipant.name}');
-      return otherParticipant.name;
-    }
-    print('🔍 Chat.displayName - Returning name: ${name}');
     return name;
   }
 
   String? get avatarUrl {
     if (type == ChatType.personal && userMetadata.length >= 2) {
-      final otherParticipant = userMetadata.firstWhere(
-        (meta) => meta.userId != createdBy,
-        orElse: () => userMetadata.first,
-      );
-      return otherParticipant.avatar;
+      final StorageService storageService = StorageService();
+      final currentUserMatricule = storageService.getUser()?.matricule;
+
+      if (currentUserMatricule != null) {
+        final otherParticipant = userMetadata.firstWhere(
+          (meta) => meta.userId != currentUserMatricule,
+          orElse: () => userMetadata.first,
+        );
+
+        return otherParticipant.avatar;
+      }
     }
     return null;
   }
@@ -163,10 +170,28 @@ class Chat {
       return DateTime.now(); // Fallback
     }
 
-    // Helper pour parser unreadCounts avec gestion des ObjectIds
-    Map<String, int> _parseUnreadCounts(dynamic unreadCountsData) {
+    // Helper pour extraire unreadCounts depuis userMetadata
+    // Prioritaire: extraire depuis userMetadata[].unreadCount au lieu de unreadCounts
+    Map<String, int> extractUnreadCountsFromMetadata(
+        List<ParticipantMetadata> userMetadataList, dynamic unreadCountsData) {
+      final Map<String, int> result = {};
+
+      // Première priorité: extraire depuis userMetadata (source de vérité du serveur)
+      if (userMetadataList.isNotEmpty) {
+        print('📌 Extraction unreadCounts depuis userMetadata');
+        for (final metadata in userMetadataList) {
+          result[metadata.userId] = metadata.unreadCount;
+          print(
+              '   - userId: ${metadata.userId}, unreadCount: ${metadata.unreadCount}');
+        }
+        return result;
+      }
+
+      // Fallback: parser depuis unreadCounts (ancien format)
       if (unreadCountsData is Map) {
-        final Map<String, int> result = {};
+        print(
+            '📌 Extraction unreadCounts depuis champ unreadCounts (fallback)');
+        final Map<String, int> parsedResult = {};
         unreadCountsData.forEach((key, value) {
           final userId = _extractId(key);
           int count = 0;
@@ -183,20 +208,64 @@ class Chat {
               count = oidValue;
             }
           }
-          result[userId] = count;
+          parsedResult[userId] = count;
         });
-        return result;
+        return parsedResult;
       }
-      return {};
+
+      return result;
     }
 
     // Parser createdAt en premier
     final createdAt = _extractDate(json['createdAt']);
 
+    final chatType = _stringToChatType(json['type']?.toString());
+    final userMetadataList = (() {
+      final userMetadataData = json['userMetadata'];
+
+      // Si c'est une liste (format complet attendu)
+      if (userMetadataData is List<dynamic>) {
+        print(
+            '✅ userMetadata est une LISTE avec ${userMetadataData.length} éléments');
+        return userMetadataData
+            .map((data) =>
+                ParticipantMetadata.fromJson(data as Map<String, dynamic>))
+            .toList();
+      }
+
+      // Si c'est un objet unique (format actuel du serveur - BUG BACKEND)
+      if (userMetadataData is Map<String, dynamic>) {
+        print(
+            '⚠️ userMetadata est un OBJET unique (devrait être une liste) - Conversion...');
+        return [ParticipantMetadata.fromJson(userMetadataData)];
+      }
+
+      // Sinon, retourner une liste vide
+      print('❌ userMetadata est null ou dans un format inconnu');
+      return <ParticipantMetadata>[];
+    })();
+
+    String chatName = json['name']?.toString() ?? 'Conversation';
+    if (chatType == ChatType.personal && userMetadataList.length >= 2) {
+      final storageService = StorageService();
+      final currentUserMatricule = storageService.getUser()?.matricule;
+      if (currentUserMatricule != null) {
+        final otherParticipant = userMetadataList.firstWhere(
+          (meta) => meta.userId != currentUserMatricule,
+          orElse: () => userMetadataList.first,
+        );
+        final fullName =
+            '${otherParticipant.prenom} ${otherParticipant.nom}'.trim();
+        if (fullName.isNotEmpty) {
+          chatName = fullName;
+        }
+      }
+    }
+
     return Chat(
       id: _extractId(json['_id']),
-      name: json['name']?.toString() ?? 'Conversation',
-      type: _stringToChatType(json['type']?.toString()),
+      name: chatName,
+      type: chatType,
       description: json['description']?.toString(),
       participants: (json['participants'] is List<dynamic>)
           ? (json['participants'] as List<dynamic>)
@@ -206,13 +275,10 @@ class Chat {
       createdBy: _extractId(json['createdBy']),
       isActive: json['isActive'] as bool? ?? true,
       isArchived: json['isArchived'] as bool? ?? false,
-      userMetadata: json['userMetadata'] != null
-          ? [
-              ParticipantMetadata.fromJson(
-                  json['userMetadata'] as Map<String, dynamic>)
-            ]
-          : [],
-      unreadCounts: _parseUnreadCounts(json['unreadCounts']),
+      userMetadata: userMetadataList,
+
+      unreadCounts: extractUnreadCountsFromMetadata(
+          userMetadataList, json['unreadCounts']),
       lastMessage: json['lastMessage'] != null
           ? LastMessage.fromJson(json['lastMessage'] as Map<String, dynamic>)
           : null,
@@ -368,6 +434,23 @@ class ParticipantMetadata {
   @HiveField(9)
   final String metadataId;
 
+  // Champs calculés pour nom et prénom
+  String get nom {
+    final parts = name.split(' ');
+    if (parts.length > 1) {
+      return parts.sublist(0, parts.length - 1).join(' ');
+    }
+    return name;
+  }
+
+  String get prenom {
+    final parts = name.split(' ');
+    if (parts.isNotEmpty) {
+      return parts.last;
+    }
+    return '';
+  }
+
   ParticipantMetadata({
     required this.userId,
     required this.unreadCount,
@@ -392,7 +475,8 @@ class ParticipantMetadata {
       customName: json['customName']?.toString(),
       notificationSettings:
           NotificationSettings.fromJson(json['notificationSettings'] ?? {}),
-      name: json['name']?.toString() ?? '',
+      name: '${json['prenom'] ?? ''} ${json['nom'] ?? ''}'
+          .trim(), // Combiner prenom et nom
       avatar: json['avatar']?.toString(),
       metadataId:
           json['_id']?['\$oid']?.toString() ?? json['_id']?.toString() ?? '',
@@ -776,11 +860,17 @@ extension ChatHelpers on Chat {
 
   String? get avatarUrl {
     if (type == ChatType.personal && userMetadata.length == 2) {
-      final otherParticipant = userMetadata.firstWhere(
-        (meta) => meta.userId != createdBy,
-        orElse: () => userMetadata.first,
-      );
-      return otherParticipant.avatar;
+      final StorageService storageService = StorageService();
+      final currentUserMatricule = storageService.getUser()?.matricule;
+
+      if (currentUserMatricule != null) {
+        final otherParticipant = userMetadata.firstWhere(
+          (meta) => meta.userId != currentUserMatricule,
+          orElse: () => userMetadata.first,
+        );
+
+        return otherParticipant.avatar;
+      }
     }
     return null;
   }

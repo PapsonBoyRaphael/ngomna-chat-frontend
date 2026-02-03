@@ -37,17 +37,29 @@ class HiveService {
 
   /// Récupérer les messages d'une conversation
   Future<List<Message>> getMessagesForConversation(
-      String conversationId) async {
+    String conversationId, {
+    int? limit,
+    int? offset,
+  }) async {
     try {
       final box = await Hive.openBox<Message>(_messagesBox);
-      final messages = box.values
+      var messages = box.values
           .where((msg) => msg.conversationId == conversationId)
           .toList();
 
       // Trier par timestamp (plus récent en dernier)
-      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      messages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-      print('📥 ${messages.length} messages récupérés pour $conversationId');
+      // Appliquer pagination si spécifiée
+      if (offset != null && offset > 0) {
+        messages = messages.skip(offset).toList();
+      }
+      if (limit != null && limit > 0) {
+        messages = messages.take(limit).toList();
+      }
+
+      print(
+          '📥 ${messages.length} messages récupérés pour $conversationId (limit: $limit, offset: $offset)');
       return messages;
     } catch (e) {
       print('❌ Erreur récupération messages: $e');
@@ -62,6 +74,17 @@ class HiveService {
       return messages.isNotEmpty ? messages.last : null;
     } catch (e) {
       print('❌ Erreur dernier message: $e');
+      return null;
+    }
+  }
+
+  /// Récupérer un message par ID
+  Future<Message?> getMessageById(String messageId) async {
+    try {
+      final box = await Hive.openBox<Message>(_messagesBox);
+      return box.get(messageId);
+    } catch (e) {
+      print('❌ Erreur récupération message: $e');
       return null;
     }
   }
@@ -238,5 +261,12 @@ class HiveService {
     } catch (e) {
       return {'messages': 0, 'chats': 0};
     }
+  }
+
+  /// Dispose resources
+  void dispose() {
+    // Hive gère automatiquement la fermeture des boxes
+    // mais on peut forcer la fermeture si nécessaire
+    print('🧹 HiveService nettoyé');
   }
 }

@@ -75,6 +75,7 @@ class AppRoutes {
         return ChatScreen(
           conversationId: args['chatId'],
           user: args['user'],
+          conversationData: args['conversationData'],
         );
       },
       chatBroadcast: (context) {

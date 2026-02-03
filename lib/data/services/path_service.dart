@@ -402,4 +402,15 @@ class PathService {
       }
     }
   }
+
+  /// Dispose resources
+  void dispose() {
+    // Nettoyer le cache des chemins
+    _appDocumentsDir = null;
+    _tempDir = null;
+    _externalStorageDir = null;
+    _appSupportDir = null;
+    _instance = null; // Permettre la recréation si nécessaire
+    print('🧹 PathService nettoyé');
+  }
 }

@@ -45,6 +45,7 @@ class MessageBubbleWithAvatar extends StatelessWidget {
         if (!message.isMe && avatarUrl != null) ...[
           CircleAvatar(
             radius: 16,
+            backgroundColor: const Color(0xFFEDEDED),
             backgroundImage: AssetImage(avatarUrl!),
           ),
           const SizedBox(width: 8),

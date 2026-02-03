@@ -26,7 +26,7 @@ class SelectableContactTile extends StatelessWidget {
             contact.name,
             style: TextStyle(
               fontSize: 17,
-              fontWeight: isGroup ? FontWeight.w600 : FontWeight.w400,
+              fontWeight: FontWeight.w400,
               fontFamily: 'Roboto',
             ),
           ),
@@ -47,6 +47,7 @@ class SelectableContactTile extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 22,
+          backgroundColor: const Color(0xFFEDEDED),
           backgroundImage: AssetImage(
             (contact.avatarUrl != null && contact.avatarUrl!.isNotEmpty)
                 ? contact.avatarUrl!

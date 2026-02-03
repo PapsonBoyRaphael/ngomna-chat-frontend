@@ -24,6 +24,7 @@ class FrequentContactTile extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           radius: 22,
+          backgroundColor: const Color(0xFFEDEDED),
           backgroundImage: AssetImage(
             (contact.avatarUrl != null && contact.avatarUrl!.isNotEmpty)
                 ? contact.avatarUrl!
@@ -33,7 +34,7 @@ class FrequentContactTile extends StatelessWidget {
         title: Text(
           contact.name,
           style: TextStyle(
-            fontWeight: isGroup ? FontWeight.w500 : FontWeight.w400,
+            fontWeight: FontWeight.w400,
             fontFamily: 'Roboto',
             fontSize: 17,
           ),

@@ -232,10 +232,14 @@ class Message {
   /// Factory depuis JSON backend
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
-      id: json['_id']?['\$oid']?.toString() ?? json['_id']?.toString() ?? '',
+      id: (json['_id'] is Map<String, dynamic>
+              ? json['_id']['\$oid']?.toString()
+              : json['_id']?.toString()) ??
+          '',
       temporaryId: json['temporaryId'] as String?,
-      conversationId: json['conversationId']?['\$oid']?.toString() ??
-          json['conversationId']?.toString() ??
+      conversationId: (json['conversationId'] is Map<String, dynamic>
+              ? json['conversationId']['\$oid']?.toString()
+              : json['conversationId']?.toString()) ??
           '',
       senderId: json['senderId'] as String? ?? '',
       senderMatricule: json['senderMatricule'] as String?,
@@ -257,8 +261,9 @@ class Message {
       receivedAt:
           json['receivedAt'] != null ? _extractDate(json['receivedAt']) : null,
       isSystemMessage: json['isSystemMessage'] as bool? ?? false,
-      replyTo:
-          json['replyTo']?['\$oid']?.toString() ?? json['replyTo']?.toString(),
+      replyTo: json['replyTo'] is Map<String, dynamic>
+          ? json['replyTo']['\$oid']?.toString()
+          : json['replyTo']?.toString(),
       reactions: List<String>.from(json['reactions'] ?? []),
       metadata: json['metadata'] != null
           ? MessageMetadata.fromJson(json['metadata'])
@@ -638,19 +643,7 @@ class Message {
 
   // UI helpers
   String getFormattedTime() {
-    final now = DateTime.now();
-    final diff = now.difference(createdAt);
-
-    if (diff.inDays == 0) {
-      return '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
-    } else if (diff.inDays == 1) {
-      return 'Hier';
-    } else if (diff.inDays < 7) {
-      final days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-      return days[createdAt.weekday - 1];
-    } else {
-      return '${createdAt.day.toString().padLeft(2, '0')}/${createdAt.month.toString().padLeft(2, '0')}';
-    }
+    return '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
   }
 
   bool get hasAttachment => fileId != null || fileUrl != null;
@@ -796,11 +789,18 @@ class MessagesLoadedResponse {
   });
 
   factory MessagesLoadedResponse.fromJson(Map<String, dynamic> json) {
+    // Construire pagination à partir des clés racines
+    final pagination = <String, dynamic>{
+      'nextCursor': json['nextCursor'],
+      'hasMore': json['hasMore'] ?? false,
+      'totalCount': json['totalCount'] ?? 0,
+    };
+
     return MessagesLoadedResponse(
-      messages: (json['messages'] as List<dynamic>)
-          .map((msg) => Message.fromJson(msg))
+      messages: (json['messages'] as List<dynamic>? ?? [])
+          .map((msg) => Message.fromJson(msg as Map<String, dynamic>))
           .toList(),
-      pagination: Map<String, dynamic>.from(json['pagination']),
+      pagination: pagination,
       fromCache: json['fromCache'] as bool? ?? false,
       processingTime: (json['processingTime'] as num?)?.toDouble() ?? 0.0,
     );
@@ -838,13 +838,14 @@ class TechnicalMetadata {
   });
 
   factory TechnicalMetadata.fromJson(Map<String, dynamic> json) {
+    final technical = json['technical'] as Map<String, dynamic>? ?? {};
     return TechnicalMetadata(
-      serverId: json['serverId'] as String?,
-      platform: json['platform'] as String?,
-      version: json['version'] as String?,
-      environment: json['environment'] as String?,
-      processingTime: json['processingTime'] as int?,
-      tags: List<String>.from(json['tags'] ?? []),
+      serverId: technical['serverId'] as String?,
+      platform: technical['platform'] as String?,
+      version: technical['version'] as String?,
+      environment: technical['environment'] as String?,
+      processingTime: technical['processingTime'] as int?,
+      tags: List<String>.from(technical['tags'] ?? []),
     );
   }
 
@@ -874,9 +875,10 @@ class KafkaMetadata {
   });
 
   factory KafkaMetadata.fromJson(Map<String, dynamic> json) {
+    final kafka = json['kafkaMetadata'] as Map<String, dynamic>? ?? {};
     return KafkaMetadata(
-      topic: json['topic'] as String?,
-      events: json['events'] as List<dynamic>?,
+      topic: kafka['topic'] as String?,
+      events: kafka['events'] as List<dynamic>?,
     );
   }
 
@@ -906,10 +908,11 @@ class RedisMetadata {
   });
 
   factory RedisMetadata.fromJson(Map<String, dynamic> json) {
+    final redis = json['redisMetadata'] as Map<String, dynamic>? ?? {};
     return RedisMetadata(
-      ttl: json['ttl'] as int?,
-      cacheStrategy: json['cacheStrategy'] as String?,
-      cacheHits: json['cacheHits'] as int?,
+      ttl: redis['ttl'] as int?,
+      cacheStrategy: redis['cacheStrategy'] as String?,
+      cacheHits: redis['cacheHits'] as int?,
     );
   }
 
@@ -944,13 +947,15 @@ class DeliveryMetadata {
   });
 
   factory DeliveryMetadata.fromJson(Map<String, dynamic> json) {
+    final delivery = json['deliveryMetadata'] as Map<String, dynamic>? ?? {};
     return DeliveryMetadata(
-      attempts: json['attempts'] as int?,
-      retryCount: json['retryCount'] as int?,
-      deliveredAt: json['deliveredAt'] != null
-          ? _extractDate(json['deliveredAt'])
+      attempts: delivery['attempts'] as int?,
+      retryCount: delivery['retryCount'] as int?,
+      deliveredAt: delivery['deliveredAt'] != null
+          ? _extractDate(delivery['deliveredAt'])
           : null,
-      readAt: json['readAt'] != null ? _extractDate(json['readAt']) : null,
+      readAt:
+          delivery['readAt'] != null ? _extractDate(delivery['readAt']) : null,
     );
   }
 
@@ -988,11 +993,12 @@ class ContentMetadata {
   });
 
   factory ContentMetadata.fromJson(Map<String, dynamic> json) {
+    final content = json['contentMetadata'] as Map<String, dynamic>? ?? {};
     return ContentMetadata(
-      mentions: List<String>.from(json['mentions'] ?? []),
-      hashtags: List<String>.from(json['hashtags'] ?? []),
-      urls: List<String>.from(json['urls'] ?? []),
-      file: json['file'],
+      mentions: List<String>.from(content['mentions'] ?? []),
+      hashtags: List<String>.from(content['hashtags'] ?? []),
+      urls: List<String>.from(content['urls'] ?? []),
+      file: content['file'],
     );
   }
 

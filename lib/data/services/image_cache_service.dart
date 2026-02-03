@@ -150,4 +150,10 @@ class ImageCacheService {
       return {'error': e.toString()};
     }
   }
+
+  /// Dispose resources
+  void dispose() {
+    // Nettoyer le cache des images si nécessaire
+    print('🧹 ImageCacheService nettoyé');
+  }
 }

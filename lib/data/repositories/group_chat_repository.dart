@@ -1,12 +1,52 @@
+import 'dart:async';
 import 'package:ngomna_chat/data/models/group_message_model.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
 
 class GroupChatRepository {
-  Future<List<GroupMessage>> getGroupMessages(String groupId) async {
+  // Singleton pattern
+  static GroupChatRepository? _instance;
+  GroupChatRepository._internal();
+
+  factory GroupChatRepository() {
+    _instance ??= GroupChatRepository._internal();
+    return _instance!;
+  }
+
+  // Streams for real-time updates
+  final StreamController<GroupMessage> _messageSentController =
+      StreamController<GroupMessage>.broadcast();
+  final StreamController<GroupMessage> _messageReceivedController =
+      StreamController<GroupMessage>.broadcast();
+
+  // Public streams
+  Stream<GroupMessage> get onMessageSent => _messageSentController.stream;
+  Stream<GroupMessage> get onMessageReceived =>
+      _messageReceivedController.stream;
+
+  // Cache for group messages
+  final Map<String, List<GroupMessage>> _messageCache = {};
+  Future<List<GroupMessage>> getGroupMessages(String groupId,
+      {int? limit, int? offset}) async {
+    // Check cache first
+    if (_messageCache.containsKey(groupId)) {
+      var messages = _messageCache[groupId]!;
+
+      // Sort messages by creation time (oldest first)
+      messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+      // Apply pagination
+      final startIndex = offset ?? 0;
+      final endIndex = limit != null ? startIndex + limit : messages.length;
+      return messages.sublist(
+        startIndex.clamp(0, messages.length),
+        endIndex.clamp(0, messages.length),
+      );
+    }
+
     await Future.delayed(const Duration(milliseconds: 500));
 
     // Mock data avec différents expéditeurs
-    return [
+    final messages = [
       GroupMessage(
         id: '1',
         conversationId: groupId,
@@ -60,12 +100,26 @@ class GroupChatRepository {
         ),
       ),
     ];
+
+    // Sort messages by creation time (oldest first)
+    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    // Cache the messages
+    _messageCache[groupId] = messages;
+
+    // Apply pagination
+    final startIndex = offset ?? 0;
+    final endIndex = limit != null ? startIndex + limit : messages.length;
+    return messages.sublist(
+      startIndex.clamp(0, messages.length),
+      endIndex.clamp(0, messages.length),
+    );
   }
 
   Future<GroupMessage> sendGroupMessage(String groupId, String text) async {
     await Future.delayed(const Duration(milliseconds: 800));
 
-    return GroupMessage(
+    final message = GroupMessage(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       conversationId: groupId,
       senderId: 'me',
@@ -82,5 +136,48 @@ class GroupChatRepository {
         isOnline: true,
       ),
     );
+
+    // Add to cache
+    if (_messageCache.containsKey(groupId)) {
+      _messageCache[groupId]!.add(message);
+    } else {
+      _messageCache[groupId] = [message];
+    }
+
+    // Emit event
+    _messageSentController.add(message);
+
+    return message;
+  }
+
+  // Receive a group message (called by socket service)
+  void receiveGroupMessage(GroupMessage message) {
+    final groupId = message.conversationId;
+
+    // Add to cache
+    if (_messageCache.containsKey(groupId)) {
+      _messageCache[groupId]!.add(message);
+    } else {
+      _messageCache[groupId] = [message];
+    }
+
+    // Emit event
+    _messageReceivedController.add(message);
+  }
+
+  // Clear cache for a specific group
+  void clearGroupCache(String groupId) {
+    _messageCache.remove(groupId);
+  }
+
+  // Clear all cache
+  void clearAllCache() {
+    _messageCache.clear();
+  }
+
+  // Cleanup method
+  void dispose() {
+    _messageSentController.close();
+    _messageReceivedController.close();
   }
 }

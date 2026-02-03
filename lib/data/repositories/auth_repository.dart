@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:ngomna_chat/data/services/api_service.dart';
 import 'package:ngomna_chat/data/services/storage_service.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
@@ -6,11 +7,34 @@ class AuthRepository {
   final ApiService _apiService;
   final StorageService _storageService;
 
-  AuthRepository({
+  // Singleton pattern
+  static AuthRepository? _instance;
+  AuthRepository._internal({
     required ApiService apiService,
     required StorageService storageService,
   })  : _apiService = apiService,
         _storageService = storageService;
+
+  factory AuthRepository({
+    required ApiService apiService,
+    required StorageService storageService,
+  }) {
+    _instance ??= AuthRepository._internal(
+      apiService: apiService,
+      storageService: storageService,
+    );
+    return _instance!;
+  }
+
+  // Streams for authentication state changes
+  final StreamController<bool> _authStateController =
+      StreamController<bool>.broadcast();
+  final StreamController<User?> _userChangedController =
+      StreamController<User?>.broadcast();
+
+  // Public streams
+  Stream<bool> get onAuthStateChanged => _authStateController.stream;
+  Stream<User?> get onUserChanged => _userChangedController.stream;
 
   /// Authentifie un utilisateur avec son matricule
   /// Endpoint: POST /api/auth/login
@@ -42,6 +66,10 @@ class AuthRepository {
       await _storageService.saveUser(user);
 
       await _storageService.saveMatricule(matricule);
+
+      // Emit authentication state change
+      _authStateController.add(true);
+      _userChangedController.add(user);
 
       print('✅ Connexion réussie pour: ${user.nom} ${user.prenom}');
       return {
@@ -116,12 +144,20 @@ class AuthRepository {
       await _apiService.clearTokens();
       await _storageService.clearUserData();
 
+      // Emit authentication state change
+      _authStateController.add(false);
+      _userChangedController.add(null);
+
       print('👋 Utilisateur déconnecté');
     } catch (e) {
       print('⚠️ Erreur lors de la déconnexion: $e');
       // Nettoyer quand même localement en cas d'erreur
       await _apiService.clearTokens();
       await _storageService.clearUserData();
+
+      // Emit authentication state change even on error
+      _authStateController.add(false);
+      _userChangedController.add(null);
     }
   }
 
@@ -212,5 +248,11 @@ class AuthRepository {
       }
     }
     return 'Erreur de connexion. Vérifiez votre réseau';
+  }
+
+  // Cleanup method
+  void dispose() {
+    _authStateController.close();
+    _userChangedController.close();
   }
 }

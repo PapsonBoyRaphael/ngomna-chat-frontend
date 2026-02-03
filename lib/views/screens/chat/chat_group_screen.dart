@@ -5,9 +5,11 @@ import 'package:ngomna_chat/data/repositories/group_chat_repository.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_app_bar.dart';
 import 'package:ngomna_chat/views/widgets/chat/message_bubble_with_avatar.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_input.dart';
+import 'package:ngomna_chat/views/widgets/chat/date_separator.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
 import 'package:ngomna_chat/controllers/chat_input_controller.dart'
     as controller;
+import 'package:ngomna_chat/core/utils/date_formatter.dart';
 
 class ChatGroupScreen extends StatelessWidget {
   final String groupId;
@@ -121,11 +123,24 @@ class _ChatGroupContent extends StatelessWidget {
             itemBuilder: (context, index) {
               final message = viewModel.messages[index];
 
-              return MessageBubbleWithAvatar(
-                message: message,
-                senderName: !message.isMe ? message.sender.fullName : null,
-                avatarUrl: !message.isMe ? message.sender.avatarUrl : null,
-                key: ValueKey(message.id),
+              final showDateSeparator = index == 0 ||
+                  viewModel.messages[index - 1].timestamp.day !=
+                      message.timestamp.day;
+
+              return Column(
+                children: [
+                  if (showDateSeparator)
+                    DateSeparator(
+                      text:
+                          DateFormatter.formatDateSeparator(message.timestamp),
+                    ),
+                  MessageBubbleWithAvatar(
+                    message: message,
+                    senderName: !message.isMe ? message.sender.fullName : null,
+                    avatarUrl: !message.isMe ? message.sender.avatarUrl : null,
+                    key: ValueKey(message.id),
+                  ),
+                ],
               );
             },
           );

@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ngomna_chat/viewmodels/chat_list_viewmodel.dart';
-import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
+import 'package:ngomna_chat/data/models/user_model.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_tile.dart';
 import 'package:ngomna_chat/views/widgets/chat/category_chip.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_list_top_bar.dart';
 import 'package:ngomna_chat/views/widgets/common/bottom_nav.dart';
 import 'package:ngomna_chat/core/routes/app_routes.dart';
-import 'package:ngomna_chat/data/models/user_model.dart';
-import 'dart:async';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -19,33 +17,14 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  late SocketService _socketService;
-
   @override
   void initState() {
     super.initState();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _socketService = Provider.of<SocketService>(context, listen: false);
-
-      // Vérifier l'authentification Socket.IO
-      if (!_socketService.isAuthenticated) {
-        print('⚠️ Non authentifié Socket.IO, retour au login');
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          AppRoutes.welcome,
-          (route) => false,
-        );
-      }
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => ChatListViewModel(),
-      child: const _ChatListContent(),
-    );
+    return const _ChatListContent();
   }
 }
 
@@ -57,28 +36,16 @@ class _ChatListContent extends StatefulWidget {
 }
 
 class __ChatListContentState extends State<_ChatListContent> {
-  late SocketService _socketService;
-  StreamSubscription? _conversationsSubscription;
-  StreamSubscription? _newMessageSubscription;
-
   @override
   void initState() {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _socketService = Provider.of<SocketService>(context, listen: false);
       final viewModel = Provider.of<ChatListViewModel>(context, listen: false);
 
       // Charger les conversations initiales
       viewModel.loadConversations();
     });
-  }
-
-  @override
-  void dispose() {
-    _conversationsSubscription?.cancel();
-    _newMessageSubscription?.cancel();
-    super.dispose();
   }
 
   @override

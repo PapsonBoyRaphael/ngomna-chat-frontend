@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ngomna_chat/viewmodels/message_viewmodel.dart';
+import 'package:ngomna_chat/viewmodels/auth_viewmodel.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_app_bar.dart';
 import 'package:ngomna_chat/views/widgets/chat/message_bubble.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_input.dart';
+import 'package:ngomna_chat/views/widgets/chat/date_separator.dart';
 import 'package:ngomna_chat/controllers/chat_input_controller.dart'
     as controller;
 import 'package:ngomna_chat/core/utils/date_formatter.dart';
+import 'package:ngomna_chat/data/repositories/message_repository.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'dart:async';
 
@@ -31,6 +35,8 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   late MessageViewModel _messageViewModel;
   late SocketService _socketService;
+  late AuthViewModel _authViewModel;
+  Chat? chat;
 
   // Pour le typing indicator
   Timer? _typingTimer;
@@ -44,19 +50,33 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _messageViewModel = Provider.of<MessageViewModel>(context, listen: false);
-      _socketService = Provider.of<SocketService>(context, listen: false);
+    // Parser les données de conversation si disponibles
+    if (widget.conversationData != null) {
+      chat = Chat.fromJson(widget.conversationData!);
+    }
 
-      // Charger les messages
-      _messageViewModel.loadMessages(widget.conversationId);
+    final messageRepository =
+        Provider.of<MessageRepository>(context, listen: false);
+    _authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+    _socketService = Provider.of<SocketService>(context, listen: false);
 
-      // S'abonner aux nouveaux messages pour scroll automatique
-      _setupMessageListener();
+    _messageViewModel = MessageViewModel(
+      messageRepository: messageRepository,
+      conversationId: widget.conversationId,
+      authViewModel: _authViewModel,
+    );
 
-      // Marquer la conversation comme lue
-      _markConversationAsRead();
-    });
+    print(
+        '🔌 [ChatScreen] Socket connecté: ${_socketService.isConnected}, authentifié: ${_socketService.isAuthenticated}');
+
+    // Initialiser le ViewModel (charge les messages et s'abonne aux streams)
+    _messageViewModel.init();
+
+    // S'abonner aux nouveaux messages pour scroll automatique
+    _setupMessageListener();
+
+    // Marquer la conversation comme lue
+    _markConversationAsRead();
   }
 
   void _setupMessageListener() {
@@ -77,6 +97,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _messageViewModel.dispose();
     _typingTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
@@ -90,9 +111,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _getCurrentUserId() {
-    // TODO: Récupérer l'ID de l'utilisateur courant depuis AuthViewModel
-    // Pour l'instant, retourner un ID par défaut
-    return 'current_user_id';
+    // Récupérer le matricule de l'utilisateur courant depuis AuthViewModel
+    final currentUser = _authViewModel.currentUser;
+    final matricule = currentUser?.matricule ?? 'unknown';
+    print('👤 [ChatScreen._getCurrentUserId] Matricule: $matricule');
+    return matricule;
   }
 
   void _sendMessage(String text) {
@@ -191,20 +214,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final messageViewModel =
-        Provider.of<MessageViewModel>(context, listen: true);
-    final typingUsers = messageViewModel.getTypingUsers(widget.conversationId);
-
-    // Observer les messages pour scroll automatique
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final messages = messageViewModel.getMessages(widget.conversationId);
-      if (messages.isNotEmpty) {
-        _scrollToBottom();
-      }
-    });
-
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider<MessageViewModel>.value(
+            value: _messageViewModel),
         ChangeNotifierProvider(
           create: (_) => controller.ChatInputStateController(),
         ),
@@ -225,11 +238,11 @@ class _ChatScreenState extends State<ChatScreen> {
             child: _ChatScreenContent(
               user: widget.user,
               conversationId: widget.conversationId,
+              chat: chat,
               onSendMessage: _sendMessage,
               onTextChanged: _onTextChanged,
               textController: _textController,
               scrollController: _scrollController,
-              typingUsers: typingUsers,
               onFileSelected: _onFileSelected,
             ),
           );
@@ -242,21 +255,21 @@ class _ChatScreenState extends State<ChatScreen> {
 class _ChatScreenContent extends StatelessWidget {
   final User user;
   final String conversationId;
+  final Chat? chat;
   final Function(String) onSendMessage;
   final Function(String) onTextChanged;
   final TextEditingController textController;
   final ScrollController scrollController;
-  final Set<String> typingUsers;
   final Function(String, String, int, String) onFileSelected;
 
   const _ChatScreenContent({
     required this.user,
     required this.conversationId,
+    required this.chat,
     required this.onSendMessage,
     required this.onTextChanged,
     required this.textController,
     required this.scrollController,
-    required this.typingUsers,
     required this.onFileSelected,
   });
 
@@ -264,6 +277,22 @@ class _ChatScreenContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final messageViewModel =
         Provider.of<MessageViewModel>(context, listen: true);
+    final typingUsers = messageViewModel.getTypingUsers(conversationId);
+
+    // Observer les messages pour scroll automatique
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final messages = messageViewModel.getMessages(conversationId);
+      if (messages.isNotEmpty) {
+        if (scrollController.hasClients) {
+          scrollController.animateTo(
+            scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      }
+    });
+
     final state = messageViewModel.getConversationState(conversationId);
     final messages = messageViewModel.getMessages(conversationId);
 
@@ -271,6 +300,8 @@ class _ChatScreenContent extends StatelessWidget {
       backgroundColor: Colors.white,
       appBar: ChatAppBar(
         user: user,
+        customTitle: chat?.displayName,
+        customAvatar: chat?.avatarUrl,
         onBack: () => Navigator.pop(context),
         onCall: () {
           // TODO: Implémenter l'appel audio
@@ -368,7 +399,7 @@ class _ChatScreenContent extends StatelessWidget {
                 onPressed: () {
                   final viewModel =
                       Provider.of<MessageViewModel>(context, listen: false);
-                  viewModel.loadMessages(conversationId, forceRefresh: true);
+                  viewModel.loadMessages(forceRefresh: true);
                 },
                 child: const Text('Réessayer'),
               ),
@@ -437,23 +468,7 @@ class _ChatScreenContent extends StatelessWidget {
 
   Widget _buildDateSeparator(DateTime? date) {
     if (date == null) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        _formatDate(date),
-        style: const TextStyle(
-          fontSize: 12,
-          color: Colors.grey,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
+    return DateSeparator(text: _formatDate(date));
   }
 
   String _formatDate(DateTime date) {

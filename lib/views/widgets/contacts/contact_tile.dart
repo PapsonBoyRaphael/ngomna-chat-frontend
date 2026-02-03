@@ -24,7 +24,7 @@ class ContactTile extends StatelessWidget {
             contact.name,
             style: const TextStyle(
               fontSize: 17,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w400,
               color: Color(0xFF1F1F1F),
               fontFamily: 'Roboto',
             ),
@@ -55,8 +55,8 @@ class ContactTile extends StatelessWidget {
           const Divider(
             color: Colors.grey,
             thickness: 1,
-            indent: 25,
-            endIndent: 25,
+            indent: 10,
+            endIndent: 10,
           ),
       ],
     );
@@ -66,6 +66,7 @@ class ContactTile extends StatelessWidget {
     return Stack(
       children: [
         CircleAvatar(
+          backgroundColor: const Color(0xFFEDEDED),
           backgroundImage: AssetImage(
             (contact.avatarUrl != null && contact.avatarUrl!.isNotEmpty)
                 ? contact.avatarUrl!

@@ -51,6 +51,8 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
                 children: [
                   Text(
                     title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -89,6 +91,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
       children: [
         CircleAvatar(
           radius: 22,
+          backgroundColor: const Color(0xFFEDEDED),
           backgroundImage: AssetImage(
             (avatarUrl != null && avatarUrl.isNotEmpty)
                 ? avatarUrl

@@ -18,6 +18,7 @@ class MemberListItem extends StatelessWidget {
         ListTile(
           leading: CircleAvatar(
             radius: 22,
+            backgroundColor: const Color(0xFFEDEDED),
             backgroundImage: AssetImage(
               (contact.avatarUrl != null && contact.avatarUrl!.isNotEmpty)
                   ? contact.avatarUrl!

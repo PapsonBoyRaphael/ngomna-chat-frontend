@@ -31,7 +31,7 @@ class BroadcastAppBar extends StatelessWidget implements PreferredSizeWidget {
             const SizedBox(width: 8),
             CircleAvatar(
               radius: 22,
-              backgroundColor: Colors.transparent,
+              backgroundColor: const Color.fromARGB(255, 255, 255, 255),
               child: Image.asset(
                 AppAssets.broadcast,
                 width: 40,

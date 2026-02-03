@@ -38,6 +38,8 @@ class StorageService {
     await _box.put(_keyAccessToken, accessToken);
     await _box.put(_keyRefreshToken, refreshToken);
     await _box.put(_keyLastLogin, DateTime.now().toIso8601String());
+
+    print('💾 Tokens sauvegardés');
   }
 
   /// Get access token
@@ -189,5 +191,11 @@ class StorageService {
       return false;
     }
     return user.matricule != null && user.matricule!.isNotEmpty;
+  }
+
+  /// Dispose resources
+  void dispose() {
+    // SharedPreferences gère automatiquement la fermeture
+    print('🧹 StorageService nettoyé');
   }
 }

@@ -5,11 +5,13 @@ import 'package:ngomna_chat/data/repositories/broadcast_repository.dart';
 import 'package:ngomna_chat/views/widgets/chat/broadcast_app_bar.dart';
 import 'package:ngomna_chat/views/widgets/chat/message_bubble.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_input.dart';
+import 'package:ngomna_chat/views/widgets/chat/date_separator.dart';
 import 'package:ngomna_chat/data/services/api_service.dart';
 import 'package:ngomna_chat/data/services/storage_service.dart';
 import 'package:ngomna_chat/data/repositories/auth_repository.dart';
 import 'package:ngomna_chat/controllers/chat_input_controller.dart'
     as controller;
+import 'package:ngomna_chat/core/utils/date_formatter.dart';
 
 class ChatBroadcastScreen extends StatelessWidget {
   final String broadcastId;
@@ -107,7 +109,21 @@ class _ChatBroadcastContent extends StatelessWidget {
             itemCount: viewModel.messages.length, // Suppression du header
             itemBuilder: (context, index) {
               final message = viewModel.messages[index];
-              return MessageBubble(message: message);
+
+              final showDateSeparator = index == 0 ||
+                  viewModel.messages[index - 1].timestamp.day !=
+                      message.timestamp.day;
+
+              return Column(
+                children: [
+                  if (showDateSeparator)
+                    DateSeparator(
+                      text:
+                          DateFormatter.formatDateSeparator(message.timestamp),
+                    ),
+                  MessageBubble(message: message),
+                ],
+              );
             },
           );
         },

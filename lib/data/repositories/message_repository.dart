@@ -1,12 +1,20 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'package:ngomna_chat/data/services/api_service.dart';
+import 'package:ngomna_chat/data/services/hive_service.dart';
+import 'package:ngomna_chat/data/services/storage_service.dart';
 import 'dart:io';
 
 class MessageRepository {
+  static MessageRepository? _instance;
+
   final SocketService _socketService;
   final ApiService _apiService;
+  final HiveService _hiveService;
+
+  SocketService get socketService => _socketService;
 
   // Cache local des messages par conversation
   final Map<String, List<Message>> _messagesCache = {};
@@ -15,18 +23,83 @@ class MessageRepository {
   // Cache pour les messages en cours d'envoi
   final Map<String, Completer<Message>> _pendingMessages = {};
 
-  MessageRepository({
+  // Typing stream
+  final _typingController = StreamController<String>.broadcast();
+  Stream<String> get typingStream => _typingController.stream;
+
+  bool _isMessageFromMe(Message message) {
+    final user = StorageService().getUser();
+    print('🔍 [MessageRepository._isMessageFromMe] Vérification message:');
+    print('   - User trouvé: ${user != null}');
+    if (user != null) {
+      print('   - User matricule: "${user.matricule}"');
+      print('   - User id: "${user.id}"');
+    }
+    print('   - Message senderId: "${message.senderId}"');
+    print('   - Message senderMatricule: "${message.senderMatricule}"');
+    print('   - Message isMe (avant): ${message.isMe}');
+    print('   - Message temporaryId: ${message.temporaryId}');
+
+    if (user == null) {
+      print('   ❌ Utilisateur non trouvé!');
+      return false;
+    }
+
+    // Le backend envoie le matricule comme senderId
+    print(
+        '   → Vérification: senderId "${message.senderId}" == matricule "${user.matricule}" ? ${message.senderId == user.matricule}');
+    if (message.senderId.isNotEmpty && message.senderId == user.matricule) {
+      print('   ✅ MATCH: senderId == matricule');
+      return true;
+    }
+
+    // Fallback au senderMatricule
+    print(
+        '   → Vérification: senderMatricule "${message.senderMatricule}" == matricule "${user.matricule}" ? ${message.senderMatricule == user.matricule}');
+    if (message.senderMatricule != null &&
+        message.senderMatricule!.isNotEmpty &&
+        message.senderMatricule == user.matricule) {
+      print('   ✅ MATCH: senderMatricule == matricule');
+      return true;
+    }
+
+    // Fallback à l'ID utilisateur
+
+    if (message.senderId.isNotEmpty && message.senderId == user.id) {
+      print('   ✅ MATCH: senderId == id');
+      return true;
+    }
+
+    return false;
+  }
+
+  factory MessageRepository({
     required SocketService socketService,
     required ApiService apiService,
+    required HiveService hiveService,
+  }) {
+    _instance ??= MessageRepository._internal(
+      socketService: socketService,
+      apiService: apiService,
+      hiveService: hiveService,
+    );
+    return _instance!;
+  }
+
+  MessageRepository._internal({
+    required SocketService socketService,
+    required ApiService apiService,
+    required HiveService hiveService,
   })  : _socketService = socketService,
-        _apiService = apiService {
+        _apiService = apiService,
+        _hiveService = hiveService {
     _setupSocketListeners();
   }
 
   /// Configurer les listeners Socket.IO
   void _setupSocketListeners() {
     // Nouveaux messages reçus
-    _socketService.messageStream.listen(_handleNewMessage);
+    _socketService.newMessageStream.listen(_handleNewMessage);
 
     // Confirmation d'envoi
     _socketService.messageSentStream.listen(_handleMessageSent);
@@ -36,47 +109,70 @@ class MessageRepository {
 
     // Messages chargés depuis le serveur
     _socketService.messagesLoadedStream.listen(_handleMessagesLoaded);
+
+    // Typing
+    _socketService.userTypingStream.listen((convId) {
+      _typingController.add(convId);
+    });
   }
 
   /// Récupérer les messages d'une conversation
-  /// Utilise Socket.IO pour les messages en temps réel
+  /// Vérifie d'abord Hive, si vide émet getMessages via Socket.IO
   Future<List<Message>> getMessages(
     String conversationId, {
     int page = 1,
     int limit = 50,
     bool forceRefresh = false,
   }) async {
-    // Vérifier le cache
+    print('📥 [MessageRepository] getMessages appelé pour: $conversationId');
+
+    // Vérifier le cache en mémoire d'abord
     if (!forceRefresh && _messagesCache.containsKey(conversationId)) {
+      print(
+          '✅ [MessageRepository] Messages trouvés dans le cache mémoire: ${_messagesCache[conversationId]!.length}');
       return _messagesCache[conversationId]!;
     }
 
-    // Demander au serveur via Socket.IO
+    // Vérifier Hive pour les messages en cache
+    try {
+      final cachedMessages = await _hiveService.getMessagesForConversation(
+        conversationId,
+        limit: limit,
+        offset: (page - 1) * limit,
+      );
+
+      if (cachedMessages.isNotEmpty && !forceRefresh) {
+        print(
+            '💾 [MessageRepository] Messages trouvés dans Hive: ${cachedMessages.length}');
+        print('📊 [MessageRepository] Contenu Hive AVANT normalisation:');
+        for (var i = 0; i < cachedMessages.length; i++) {
+          print(
+              '   - [$i] id=${cachedMessages[i].id}, isMe=${cachedMessages[i].isMe}, senderId=${cachedMessages[i].senderId}');
+        }
+        _updateMessagesCache(conversationId, cachedMessages);
+        final cacheAfter = _messagesCache[conversationId] ?? [];
+        print(
+            '📊 [MessageRepository] Contenu Cache APRÈS _updateMessagesCache:');
+        for (var i = 0; i < cacheAfter.length; i++) {
+          print(
+              '   - [$i] id=${cacheAfter[i].id}, isMe=${cacheAfter[i].isMe}, senderId=${cacheAfter[i].senderId}');
+        }
+        return cacheAfter;
+      } else {
+        print('⚠️ [MessageRepository] Hive vide pour: $conversationId');
+      }
+    } catch (e) {
+      print('❌ [MessageRepository] Erreur lors de la lecture Hive: $e');
+    }
+
+    // Hive vide ou forceRefresh → émettre l'event pour charger depuis le serveur
+    print(
+        '🌐 [MessageRepository] Émission event getMessages pour: $conversationId');
     await _socketService.getMessages(conversationId, page: page, limit: limit);
 
-    // Attendre la réponse via le stream
-    final completer = Completer<List<Message>>();
-    final subscription = _socketService.messagesLoadedStream.listen((messages) {
-      // Filtrer pour cette conversation
-      final conversationMessages = messages
-          .where((msg) => msg.conversationId == conversationId)
-          .toList();
-
-      if (conversationMessages.isNotEmpty) {
-        _updateMessagesCache(conversationId, conversationMessages);
-        completer.complete(conversationMessages);
-      }
-    });
-
-    // Timeout après 10 secondes
-    Timer(const Duration(seconds: 10), () {
-      if (!completer.isCompleted) {
-        subscription.cancel();
-        completer.completeError(TimeoutException('Timeout loading messages'));
-      }
-    });
-
-    return completer.future;
+    // Retourner une liste vide en attendant que les messages arrivent via le listener
+    print('⏳ [MessageRepository] En attente des messages du serveur...');
+    return [];
   }
 
   /// Stream des messages pour une conversation (mise à jour temps réel)
@@ -153,24 +249,45 @@ class MessageRepository {
 
   /// Gérer un nouveau message reçu du serveur
   void _handleNewMessage(Message message) {
-    final conversationId = message.conversationId;
+    final normalizedMessage = message.copyWith(isMe: _isMessageFromMe(message));
+
+    final conversationId = normalizedMessage.conversationId;
+
+    print('📨 [MessageRepository._handleNewMessage] Nouveau message reçu:');
+    print('   - conversationId: $conversationId');
+    print('   - messageId: ${normalizedMessage.id}');
+    print('   - senderId: ${normalizedMessage.senderId}');
+    print('   - isMe (normalisé): ${normalizedMessage.isMe}');
+    print(
+        '   - content: ${normalizedMessage.content.substring(0, min(50, normalizedMessage.content.length))}...');
 
     // Vérifier si c'est un message qu'on a envoyé (via temporaryId)
-    if (message.temporaryId != null &&
-        _pendingMessages.containsKey(message.temporaryId)) {
-      final completer = _pendingMessages[message.temporaryId!];
+    if (normalizedMessage.temporaryId != null &&
+        _pendingMessages.containsKey(normalizedMessage.temporaryId)) {
+      final completer = _pendingMessages[normalizedMessage.temporaryId!];
       if (!completer!.isCompleted) {
-        completer.complete(message);
+        completer.complete(normalizedMessage);
       }
-      _pendingMessages.remove(message.temporaryId);
+      _pendingMessages.remove(normalizedMessage.temporaryId);
     }
 
     // Ajouter au cache et notifier les listeners
-    _addMessageToCache(conversationId, message);
+    _addMessageToCache(conversationId, normalizedMessage);
+
+    // Marquer comme lu si ce n'est pas notre propre message
+    if (!normalizedMessage.isMe && normalizedMessage.id.isNotEmpty) {
+      print(
+          '👁️ [MessageRepository] Marquage message comme read: ${normalizedMessage.id}');
+      markMessageRead(normalizedMessage.id, conversationId);
+    }
   }
 
   /// Gérer la confirmation d'envoi d'un message
   void _handleMessageSent(MessageSentResponse response) {
+    print('📤 [MessageRepository._handleMessageSent] Confirmation reçue');
+    print('   - temporaryId: ${response.temporaryId}');
+    print('   - messageId: ${response.messageId}');
+
     final temporaryId = response.temporaryId;
 
     // Trouver le message dans le cache via temporaryId
@@ -181,12 +298,20 @@ class MessageRepository {
 
       if (index != -1) {
         // Mettre à jour avec l'ID permanent et le statut
+        print(
+            '   ✅ Message trouvé dans le cache pour conversation: $conversationId');
         final updatedMessage = messages[index].copyWith(
           id: response.messageId,
           status: MessageStatus.sent,
+          isMe: true,
         );
+        print('   - Avant: isMe=${messages[index].isMe}');
+        print('   - Après: isMe=${updatedMessage.isMe}');
 
         _messagesCache[conversationId]![index] = updatedMessage;
+
+        // Sauvegarder dans Hive
+        _hiveService.saveMessages(_messagesCache[conversationId]!);
 
         // Notifier les listeners
         if (_messageStreams.containsKey(conversationId)) {
@@ -216,8 +341,14 @@ class MessageRepository {
   }
 
   /// Gérer les messages chargés depuis le serveur
-  void _handleMessagesLoaded(List<Message> messages) {
-    if (messages.isEmpty) return;
+  Future<void> _handleMessagesLoaded(List<Message> messages) async {
+    print(
+        '📨 [MessageRepository] Messages reçus du serveur: ${messages.length}');
+
+    if (messages.isEmpty) {
+      print('⚠️ [MessageRepository] Aucun message reçu');
+      return;
+    }
 
     // Grouper par conversationId
     final groupedMessages = <String, List<Message>>{};
@@ -227,32 +358,99 @@ class MessageRepository {
           .add(message);
     }
 
-    // Mettre à jour chaque cache de conversation
+    print(
+        '📊 [MessageRepository] Messages groupés par conversation: ${groupedMessages.keys.length} conversations');
+
+    // Mettre à jour chaque cache de conversation avec merge
     for (final entry in groupedMessages.entries) {
-      _updateMessagesCache(entry.key, entry.value);
+      final convId = entry.key;
+      final serverMsgs = entry.value
+          .map((msg) => msg.copyWith(isMe: _isMessageFromMe(msg)))
+          .toList();
+
+      var localMsgs = _messagesCache[convId] ?? [];
+
+      // Si le cache est vide, utiliser directement les messages du serveur
+      if (localMsgs.isEmpty) {
+        print(
+            '✅ [MessageRepository] Cache vide pour $convId, utilisation directe des messages du serveur (${serverMsgs.length} messages)');
+        localMsgs = serverMsgs;
+      } else {
+        // Merge : update existants, add nouveaux
+        print(
+            '🔄 [MessageRepository] Merge des messages pour $convId (local: ${localMsgs.length}, serveur: ${serverMsgs.length})');
+        for (final serverMsg in serverMsgs) {
+          print(
+              '🔍 [MessageRepository] Vérification message serveur: id=${serverMsg.id}, temporaryId=${serverMsg.temporaryId}');
+          final idx = localMsgs.indexWhere((m) =>
+              m.id == serverMsg.id || m.temporaryId == serverMsg.temporaryId);
+          if (idx != -1) {
+            print(
+                '🔄 [MessageRepository] Mise à jour message existant: id=${serverMsg.id}');
+            localMsgs[idx] = serverMsg; // update status/id
+          } else {
+            print(
+                '➕ [MessageRepository] Ajout nouveau message: id=${serverMsg.id}');
+            localMsgs.add(serverMsg);
+          }
+        }
+      }
+
+      print(
+          '💾 [MessageRepository] Sauvegarde de ${localMsgs.length} messages (merged) pour $convId');
+      _updateMessagesCache(convId, localMsgs);
+      _hiveService.saveMessages(localMsgs);
     }
+
+    print('✅ [MessageRepository] Tous les messages sauvegardés');
   }
 
   /// Mettre à jour le cache des messages
   void _updateMessagesCache(String conversationId, List<Message> messages) {
-    // Trier par timestamp (plus récent en dernier)
+    // Trier par timestamp (plus ancien en haut, plus récent en bas)
     messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-    _messagesCache[conversationId] = messages;
+    // 🔧 Appliquer isMe APRÈS le tri mais AVANT la sauvegarde
+    final normalizedMessages = messages
+        .map(
+            (msg) => msg.isMe ? msg : msg.copyWith(isMe: _isMessageFromMe(msg)))
+        .toList();
+
+    print(
+        '📝 [MessageRepository._updateMessagesCache] AVANT normalisation: ${messages.length} messages');
+    for (var i = 0; i < messages.length; i++) {
+      print(
+          '   - [$i] id=${messages[i].id}, isMe=${messages[i].isMe}, senderId=${messages[i].senderId}');
+    }
+
+    print(
+        '📝 [MessageRepository._updateMessagesCache] APRÈS normalisation: ${normalizedMessages.length} messages');
+    for (var i = 0; i < normalizedMessages.length; i++) {
+      print(
+          '   - [$i] id=${normalizedMessages[i].id}, isMe=${normalizedMessages[i].isMe}, senderId=${normalizedMessages[i].senderId}');
+    }
+
+    _messagesCache[conversationId] = normalizedMessages;
 
     // Notifier les listeners
     if (_messageStreams.containsKey(conversationId)) {
-      _messageStreams[conversationId]!.add(messages);
+      _messageStreams[conversationId]!.add(normalizedMessages);
     }
   }
 
   /// Ajouter un message au cache
   void _addMessageToCache(String conversationId, Message message) {
     final messages = _messagesCache.putIfAbsent(conversationId, () => []);
+
     messages.add(message);
 
     // Trier par timestamp
     messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    // 💾 Sauvegarder dans Hive
+    _hiveService.saveMessages(messages);
+    print(
+        '💾 [MessageRepository] Message ajouté au cache ET sauvegardé dans Hive: ${message.id}');
 
     // Notifier les listeners
     if (_messageStreams.containsKey(conversationId)) {
@@ -383,6 +581,15 @@ class MessageRepository {
     }
   }
 
+  /// Vérifier si deux listes de messages sont égales
+  bool _areListsEqual(List<Message> a, List<Message> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   /// Nettoyer les ressources
   void dispose() {
     for (final controller in _messageStreams.values) {
@@ -391,5 +598,6 @@ class MessageRepository {
     _messageStreams.clear();
     _messagesCache.clear();
     _pendingMessages.clear();
+    _typingController.close();
   }
 }

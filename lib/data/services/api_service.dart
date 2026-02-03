@@ -293,3 +293,12 @@ class GatewayHealthResponse {
     );
   }
 }
+
+/// Extension pour ajouter dispose à ApiService
+extension ApiServiceDispose on ApiService {
+  void dispose() {
+    // Nettoyer les ressources Dio si nécessaire
+    // Dio gère automatiquement la fermeture des connexions
+    print('🧹 ApiService nettoyé');
+  }
+}
