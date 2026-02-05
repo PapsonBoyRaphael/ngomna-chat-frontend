@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_vector_icons/flutter_vector_icons.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
+import 'package:ngomna_chat/data/models/message_model.dart';
+import 'package:ngomna_chat/data/services/storage_service.dart';
 import 'package:ngomna_chat/core/constants/app_fonts.dart';
 import 'package:ngomna_chat/core/utils/date_formatter.dart';
 
@@ -12,6 +15,47 @@ class ChatTile extends StatelessWidget {
     required this.chat,
     required this.onTap,
   });
+
+  Icon _getStatusIcon(MessageStatus status) {
+    switch (status) {
+      case MessageStatus.sending:
+        return const Icon(
+          MaterialCommunityIcons.clock_outline,
+          size: 14,
+          color: Colors.grey,
+        );
+      case MessageStatus.sent:
+        return const Icon(
+          MaterialCommunityIcons.check,
+          size: 18,
+          color: Colors.grey,
+        );
+      case MessageStatus.delivered:
+        return const Icon(
+          MaterialCommunityIcons.check_all,
+          size: 18,
+          color: Colors.grey,
+        );
+      case MessageStatus.read:
+        return const Icon(
+          MaterialCommunityIcons.check_all,
+          size: 18,
+          color: Color.fromARGB(255, 36, 148, 239),
+        );
+      case MessageStatus.failed:
+        return const Icon(
+          MaterialCommunityIcons.alert_circle_outline,
+          size: 18,
+          color: Colors.red,
+        );
+      default:
+        return const Icon(
+          MaterialCommunityIcons.help_circle_outline,
+          size: 18,
+          color: Colors.grey,
+        );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +71,7 @@ class ChatTile extends StatelessWidget {
             _buildAvatar(),
             const SizedBox(width: 14),
             _buildContent(),
+            const SizedBox(width: 5),
             _buildTimeAndBadge(),
           ],
         ),
@@ -94,16 +139,27 @@ class ChatTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            (chat.lastMessage?.content ?? '').replaceAll('\n', ' '),
-            maxLines: 1,
-            style: TextStyle(
-              fontSize: 16,
-              color: const Color(0xFF7A7A7A),
-              fontWeight: FontWeight.w400,
-              fontFamily: 'Roboto',
-            ),
-            overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              if (chat.lastMessage != null &&
+                  _isCurrentUserMessage(chat.lastMessage!)) ...[
+                _getStatusIcon(chat.lastMessage!.status),
+                const SizedBox(width: 4),
+              ],
+              Expanded(
+                child: Text(
+                  (chat.lastMessage?.content ?? '').replaceAll('\n', ' '),
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: const Color(0xFF7A7A7A),
+                    fontWeight: FontWeight.w400,
+                    fontFamily: 'Roboto',
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -122,8 +178,8 @@ class ChatTile extends StatelessWidget {
   }
 
   Widget _buildTimeAndBadge() {
-    // Calculer le nombre total de messages non lus
-    final totalUnread = chat.unreadCounts.values.fold<int>(0, (a, b) => a + b);
+    // Utiliser le getter unreadCount qui retourne seulement le count de l'utilisateur actuel
+    final totalUnread = chat.unreadCount;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -158,5 +214,14 @@ class ChatTile extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  bool _isCurrentUserMessage(LastMessage message) {
+    final StorageService storageService = StorageService();
+    final currentUser = storageService.getUser();
+    if (currentUser == null) return false;
+
+    return message.senderId == currentUser.matricule ||
+        message.senderId == currentUser.id;
   }
 }

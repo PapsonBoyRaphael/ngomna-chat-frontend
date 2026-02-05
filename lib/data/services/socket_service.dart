@@ -3,7 +3,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
-import 'package:ngomna_chat/data/models/chat_model.dart';
+import 'package:ngomna_chat/data/services/chat_stream_manager.dart';
 
 class SocketService {
   static const String _socketUrl = 'http://localhost:8003'; // Gateway
@@ -20,14 +20,15 @@ class SocketService {
   String? _matricule;
   String? _accessToken;
 
-  // StreamControllers pour chaque événement majeur
-  final _connectionChangedController = StreamController<bool>.broadcast();
-  Stream<bool> get connectionChangedStream =>
-      _connectionChangedController.stream;
+  // ChatStreamManager unifié (remplace les 25+ StreamControllers)
+  final _streamManager = ChatStreamManager();
+  ChatStreamManager get streamManager => _streamManager;
 
+  // Stream d'authentification
   final _authChangedController = StreamController<bool>.broadcast();
   Stream<bool> get authChangedStream => _authChangedController.stream;
 
+  // Legacy streams pour compatibilité arrière (seront dépréciés)
   final _newMessageController = StreamController<Message>.broadcast();
   Stream<Message> get newMessageStream => _newMessageController.stream;
 
@@ -60,6 +61,41 @@ class SocketService {
 
   final _userStopTypingController = StreamController<String>.broadcast();
   Stream<String> get userStopTypingStream => _userStopTypingController.stream;
+
+  final _messageStatusChangedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get messageStatusChangedStream =>
+      _messageStatusChangedController.stream;
+
+  final _messageReadController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get messageReadStream =>
+      _messageReadController.stream;
+
+  final _participantRemovedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get participantRemovedStream =>
+      _participantRemovedController.stream;
+
+  final _conversationDeletedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get conversationDeletedStream =>
+      _conversationDeletedController.stream;
+
+  final _fileEventController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get fileEventStream =>
+      _fileEventController.stream;
+
+  final _messageReactionController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get messageReactionStream =>
+      _messageReactionController.stream;
+
+  final _messageReplyController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get messageReplyStream =>
+      _messageReplyController.stream;
 
   bool get isConnected => _isConnected;
   bool get isAuthenticated => _isAuthenticated;
@@ -119,7 +155,7 @@ class SocketService {
       print('✅ Socket.IO connecté');
       _isConnected = true;
       _reconnectAttempts = 0;
-      _connectionChangedController.add(true);
+      _streamManager.emitConnection(ConnectionState.connected);
 
       // Authentifier automatiquement si on a des credentials
       if (_accessToken != null && _userId != null) {
@@ -131,15 +167,14 @@ class SocketService {
       print('❌ Socket.IO déconnecté');
       _isConnected = false;
       _isAuthenticated = false;
-      _connectionChangedController.add(false);
-      _authChangedController.add(false);
+      _streamManager.emitConnection(ConnectionState.disconnected);
       _scheduleReconnect();
     });
 
     _socket.onConnectError((data) {
       print('❌ Erreur connexion Socket.IO: $data');
       _isConnected = false;
-      _connectionChangedController.add(false);
+      _streamManager.emitConnection(ConnectionState.error);
       _scheduleReconnect();
     });
 
@@ -148,33 +183,42 @@ class SocketService {
       print('✅ Authentification Socket.IO réussie');
       _isAuthenticated = true;
       _authChangedController.add(true);
+      _streamManager.emitConnection(ConnectionState.authenticated);
 
       final response = data as Map<String, dynamic>;
       print(
           '📦 Conversations auto-jointe: ${response['autoJoinedConversations']}');
-
-      // Charger les conversations automatiquement après authentification
-      // requestConversations();
     });
 
     _socket.on('auth_error', (data) {
       print('❌ Erreur authentification Socket.IO: $data');
       _isAuthenticated = false;
       _authChangedController.add(false);
+      _streamManager.emitConnection(ConnectionState.error);
     });
 
-    // Événements messages
+    // Événements messages privés
     _socket.on('newMessage', (data) {
       print('📩 Nouveau message reçu');
       try {
         final messageData = data as Map<String, dynamic>;
         final message = Message.fromJson(messageData);
-        _newMessageController.add(message);
-        
+
+        // SEUL système: Émit via ChatStreamManager
+        final event = MessageEvent.fromJson(messageData, 'private');
+        _streamManager.emitMessage(event);
+
+        // ❌ SUPPRIMÉ: _newMessageController.add(message);
+        // Raison: Utiliser ChatStreamManager.messageStream à la place
+
         // Marquer automatiquement comme livré
         if (message.id.isNotEmpty && !message.isMe) {
-          print('📬 Marquage message comme delivered: ${message.id}');
+          print(
+              '📦 markMessageDelivered (private) → messageId=${message.id}, conversationId=${message.conversationId}');
           markMessageDelivered(message.id, message.conversationId);
+        } else {
+          print(
+              '⏭️ markMessageDelivered ignoré (private) → id=${message.id}, isMe=${message.isMe}');
         }
       } catch (e) {
         print('❌ Erreur parsing nouveau message: $e');
@@ -242,11 +286,17 @@ class SocketService {
       _presenceUpdateController.add({'type': 'online_users', 'data': data});
     });
 
-    // Événements frappe
+    // Événements frappe (typing)
     _socket.on('userTyping', (data) {
       final conversationId = data['conversationId'] as String?;
       if (conversationId != null) {
         _userTypingController.add(conversationId);
+        try {
+          final event = TypingEvent.fromJson({...data, 'isTyping': true});
+          _streamManager.emitTyping(event);
+        } catch (e) {
+          print('❌ Erreur parsing userTyping: $e');
+        }
       }
     });
 
@@ -254,12 +304,268 @@ class SocketService {
       final conversationId = data['conversationId'] as String?;
       if (conversationId != null) {
         _userStopTypingController.add(conversationId);
+        try {
+          final event = TypingEvent.fromJson({...data, 'isTyping': false});
+          _streamManager.emitTyping(event);
+        } catch (e) {
+          print('❌ Erreur parsing userStoppedTyping: $e');
+        }
       }
     });
 
-    // Événements statuts
+    // Événements statut message
     _socket.on('messageStatusChanged', (data) {
-      print('🔄 Statut message changé: $data');
+      print('📊 Statut message changé');
+      try {
+        // ❌ SUPPRIMÉ: _messageStatusChangedController.add(data);
+        // SEULEMENT ChatStreamManager
+        final event = MessageStatusEvent.fromJson(data as Map<String, dynamic>);
+        _streamManager.emitMessageStatus(event);
+      } catch (e) {
+        print('❌ Erreur parsing messageStatusChanged: $e');
+      }
+    });
+
+    _socket.on('messageRead', (data) {
+      print('👁️ Message marqué comme lu');
+      try {
+        // ❌ SUPPRIMÉ: _messageReadController.add(data);
+        // SEULEMENT ChatStreamManager
+        final event = MessageStatusEvent.fromJson(data as Map<String, dynamic>);
+        _streamManager.emitMessageStatus(event);
+      } catch (e) {
+        print('❌ Erreur parsing messageRead: $e');
+      }
+    });
+
+    // Événements groupe
+    _socket.on('message:group', (data) {
+      print('👥 Message groupe reçu: $data');
+      try {
+        final messageData = data as Map<String, dynamic>;
+        final event = MessageEvent.fromJson(messageData, 'group');
+        _streamManager.emitMessage(event);
+
+        // Marquer automatiquement comme livré
+        final message = Message.fromJson(messageData);
+        if (message.id.isNotEmpty && !message.isMe) {
+          print(
+              '📦 markMessageDelivered (group) → messageId=${message.id}, conversationId=${message.conversationId}');
+          markMessageDelivered(message.id, message.conversationId);
+        } else {
+          print(
+              '⏭️ markMessageDelivered ignoré (group) → id=${message.id}, isMe=${message.isMe}');
+        }
+      } catch (e) {
+        print('❌ Erreur parsing message:group: $e');
+      }
+    });
+
+    // Événements canal
+    _socket.on('message:channel', (data) {
+      print('📢 Message canal reçu: $data');
+      try {
+        final messageData = data as Map<String, dynamic>;
+        final event = MessageEvent.fromJson(messageData, 'channel');
+        _streamManager.emitMessage(event);
+
+        // Marquer automatiquement comme livré
+        final message = Message.fromJson(messageData);
+        if (message.id.isNotEmpty && !message.isMe) {
+          print(
+              '📦 markMessageDelivered (channel) → messageId=${message.id}, conversationId=${message.conversationId}');
+          markMessageDelivered(message.id, message.conversationId);
+        } else {
+          print(
+              '⏭️ markMessageDelivered ignoré (channel) → id=${message.id}, isMe=${message.isMe}');
+        }
+      } catch (e) {
+        print('❌ Erreur parsing message:channel: $e');
+      }
+    });
+
+    // Événements typing structurés
+    _socket.on('typing:event', (data) {
+      print('⌨️ Événement typing: $data');
+      try {
+        final event = TypingEvent.fromJson(data as Map<String, dynamic>);
+        _streamManager.emitTyping(event);
+      } catch (e) {
+        print('❌ Erreur parsing typing:event: $e');
+      }
+    });
+
+    // Événements statut message
+    _socket.on('message:status', (data) {
+      print('📊 Statut message: $data');
+      try {
+        final event = MessageStatusEvent.fromJson(data as Map<String, dynamic>);
+        _streamManager.emitMessageStatus(event);
+      } catch (e) {
+        print('❌ Erreur parsing message:status: $e');
+      }
+    });
+
+    // Événements conversation génériques et spécifiques
+    _socket.on('conversation:event', (data) {
+      print('💬 Événement conversation: $data');
+      try {
+        final event = ConversationEvent.fromJson(data as Map<String, dynamic>);
+        _streamManager.emitConversation(event);
+      } catch (e) {
+        print('❌ Erreur parsing conversation:event: $e');
+      }
+    });
+
+    _socket.on('conversation:created', (data) {
+      print('✨ Conversation créée: $data');
+      try {
+        final event = ConversationEvent.fromJson(
+            {...data as Map<String, dynamic>, 'event': 'created'});
+        _streamManager.emitConversation(event);
+      } catch (e) {
+        print('❌ Erreur parsing conversation:created: $e');
+      }
+    });
+
+    _socket.on('conversation:updated', (data) {
+      print('🔄 Conversation mise à jour: $data');
+      try {
+        final event = ConversationEvent.fromJson(
+            {...data as Map<String, dynamic>, 'event': 'updated'});
+        _streamManager.emitConversation(event);
+      } catch (e) {
+        print('❌ Erreur parsing conversation:updated: $e');
+      }
+    });
+
+    _socket.on('conversation:participant:added', (data) {
+      print('➕ Participant ajouté: $data');
+      try {
+        final event = ConversationEvent.fromJson(
+            {...data as Map<String, dynamic>, 'event': 'participant_added'});
+        _streamManager.emitConversation(event);
+      } catch (e) {
+        print('❌ Erreur parsing conversation:participant:added: $e');
+      }
+    });
+
+    _socket.on('conversation:participant:removed', (data) {
+      print('➖ Participant supprimé: $data');
+      try {
+        final event = ConversationEvent.fromJson(
+            {...data as Map<String, dynamic>, 'event': 'participant_removed'});
+        _streamManager.emitConversation(event);
+      } catch (e) {
+        print('❌ Erreur parsing conversation:participant:removed: $e');
+      }
+    });
+
+    _socket.on('conversation:deleted', (data) {
+      print('🗑️ Conversation supprimée: $data');
+      try {
+        final event = ConversationEvent.fromJson(
+            {...data as Map<String, dynamic>, 'event': 'deleted'});
+        _streamManager.emitConversation(event);
+      } catch (e) {
+        print('❌ Erreur parsing conversation:deleted: $e');
+      }
+    });
+
+    // Événements fichier
+    _socket.on('file:event', (data) {
+      print('📁 Événement fichier: $data');
+      try {
+        final event = FileEvent.fromJson(data as Map<String, dynamic>);
+        _streamManager.emitFile(event);
+      } catch (e) {
+        print('❌ Erreur parsing file:event: $e');
+      }
+    });
+
+    // Événements interactions message (réaction, réponse)
+    _socket.on('message:reaction', (data) {
+      print('😊 Réaction message: $data');
+      try {
+        final event = MessageInteractionEvent.fromJson(
+            {...data as Map<String, dynamic>, 'type': 'reaction'});
+        _streamManager.emitMessageInteraction(event);
+      } catch (e) {
+        print('❌ Erreur parsing message:reaction: $e');
+      }
+    });
+
+    _socket.on('message:reply', (data) {
+      print('↩️ Réponse message: $data');
+      try {
+        final event = MessageInteractionEvent.fromJson(
+            {...data as Map<String, dynamic>, 'type': 'reply'});
+        _streamManager.emitMessageInteraction(event);
+      } catch (e) {
+        print('❌ Erreur parsing message:reply: $e');
+      }
+    });
+
+    // Événements présence (garder pour compatibilité)
+    _socket.on('presence:update', (data) {
+      _presenceUpdateController.add({'type': 'update', 'data': data});
+    });
+
+    _socket.on('conversation_online_users', (data) {
+      _presenceUpdateController.add({'type': 'online_users', 'data': data});
+    });
+
+    // Événements conversations (legacy, garder pour compatibilité)
+    _socket.on('conversationsLoaded', (data) async {
+      print('📩 Données brutes reçues dans SocketService !!');
+      try {
+        _conversationUpdateController.add(data as Map<String, dynamic>);
+      } catch (e) {
+        print('❌ Erreur conversationsLoaded: $e');
+      }
+    });
+
+    _socket.on('conversationLoaded', (data) {
+      print('💬 Conversation chargée');
+      try {
+        _conversationUpdateController.add({'type': 'single', 'data': data});
+      } catch (e) {
+        print('❌ Erreur lors de l\'ajout de la conversation : $e');
+      }
+    });
+
+    // Événements messages chargés (legacy)
+    _socket.on('messagesLoaded', (data) {
+      print('📦 [SocketService] Événement messagesLoaded reçu');
+      try {
+        final response = MessagesLoadedResponse.fromJson(data);
+        print(
+            '📦 [SocketService] Messages parsés: ${response.messages.length} messages');
+        _messagesLoadedController.add(response.messages);
+      } catch (e) {
+        print('❌ [SocketService] Erreur parsing messagesLoaded: $e');
+      }
+    });
+
+    // Événements envoi (legacy)
+    _socket.on('message_sent', (data) {
+      print('📤 Message envoyé confirmé');
+      try {
+        final response = MessageSentResponse.fromJson(data);
+        _messageSentController.add(response);
+      } catch (e) {
+        print('❌ Erreur parsing message_sent: $e');
+      }
+    });
+
+    _socket.on('message_error', (data) {
+      print('❌ Erreur message: $data');
+      try {
+        final error = MessageErrorResponse.fromJson(data);
+        _messageErrorController.add(error);
+      } catch (e) {
+        print('❌ Erreur parsing message_error: $e');
+      }
     });
   }
 
@@ -313,7 +619,7 @@ class SocketService {
   Future<void> _waitForConnection({int maxRetries = 10}) async {
     for (int i = 0; i < maxRetries; i++) {
       if (_isConnected) return;
-      await Future.delayed(Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 500));
     }
     throw TimeoutException('Connexion Socket.IO timeout');
   }
@@ -397,8 +703,14 @@ class SocketService {
   /// Marquer message comme livré
   Future<void> markMessageDelivered(
       String messageId, String conversationId) async {
-    if (!_isAuthenticated) return;
+    if (!_isAuthenticated) {
+      print(
+          '⚠️ markMessageDelivered annulé (non authentifié) → messageId=$messageId, conversationId=$conversationId');
+      return;
+    }
 
+    print(
+        '✅ markMessageDelivered émis → messageId=$messageId, conversationId=$conversationId');
     _socket.emit('markMessageDelivered', {
       'messageId': messageId,
       'conversationId': conversationId,
@@ -470,9 +782,13 @@ class SocketService {
   Future<void> dispose() async {
     await disconnect();
 
-    // Close tous les controllers
-    _connectionChangedController.close();
+    // Fermer le ChatStreamManager
+    _streamManager.dispose();
+
+    // Fermer le stream d'authentification
     _authChangedController.close();
+
+    // Fermer les legacy controllers
     _newMessageController.close();
     _messageSentController.close();
     _messageErrorController.close();
@@ -481,6 +797,8 @@ class SocketService {
     _presenceUpdateController.close();
     _userTypingController.close();
     _userStopTypingController.close();
+    _messageStatusChangedController.close();
+    _messageReadController.close();
 
     print('🧹 SocketService nettoyé');
   }

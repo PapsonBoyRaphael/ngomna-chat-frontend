@@ -7,6 +7,7 @@ import 'package:ngomna_chat/views/widgets/common/container_wrapper.dart';
 import 'package:ngomna_chat/views/widgets/common/top_bar.dart';
 import 'package:ngomna_chat/views/widgets/home/feature_grid.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
+import 'package:ngomna_chat/data/services/chat_storage_orchestrator.dart';
 import 'package:ngomna_chat/viewmodels/auth_viewmodel.dart';
 
 class NgomnaFirstScreen extends StatefulWidget {
@@ -19,6 +20,8 @@ class NgomnaFirstScreen extends StatefulWidget {
 class _NgomnaFirstScreenState extends State<NgomnaFirstScreen> {
   late SocketService _socketService;
   late AuthViewModel _authViewModel;
+  ChatStorageOrchestrator? _storageOrchestrator;
+  StreamSubscription<bool>? _authSubscription;
 
   // État des conversations
   Map<String, dynamic>? _conversationsData;
@@ -41,13 +44,32 @@ class _NgomnaFirstScreenState extends State<NgomnaFirstScreen> {
     _socketService = Provider.of<SocketService>(context, listen: false);
     _authViewModel = Provider.of<AuthViewModel>(context, listen: false);
 
-    // Vérifier si l'utilisateur est authentifié Socket.IO
+    // Écouter les changements d'authentification
+    _authSubscription?.cancel();
+    _authSubscription =
+        _socketService.authChangedStream.listen((isAuthenticated) {
+      if (isAuthenticated) {
+        _onSocketAuthenticated();
+      }
+    });
+
+    // Vérifier si l'utilisateur est déjà authentifié Socket.IO
     if (!_socketService.isAuthenticated) {
       print('⚠️ Utilisateur non authentifié Socket.IO sur home screen');
       return;
     }
 
+    _onSocketAuthenticated();
+  }
+
+  void _onSocketAuthenticated() {
     print('🏠 Home Screen: Écoute des conversations...');
+
+    // Initialiser l'orchestrateur juste après la connexion
+    _storageOrchestrator ??=
+        ChatStorageOrchestrator(_socketService.streamManager);
+    _storageOrchestrator!.setupStreamToHiveBindings();
+    _storageOrchestrator!.syncHiveToStreams();
 
     // Demander explicitement les conversations si pas reçues automatiquement
     Future.delayed(const Duration(seconds: 3), () {
@@ -91,6 +113,7 @@ class _NgomnaFirstScreenState extends State<NgomnaFirstScreen> {
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     super.dispose();
   }
 

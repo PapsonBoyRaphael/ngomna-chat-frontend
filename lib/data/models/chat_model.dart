@@ -1,5 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:ngomna_chat/data/services/storage_service.dart';
+import 'package:ngomna_chat/data/models/message_model.dart';
 
 part 'chat_model.g.dart';
 
@@ -77,9 +78,32 @@ class Chat {
 
   // Calculated fields (not stored in Hive)
   int get unreadCount {
-    // TODO: Récupérer le count pour l'utilisateur courant
-    if (unreadCounts.isEmpty) return 0;
-    return unreadCounts.values.reduce((a, b) => a + b);
+    // Récupérer le count pour l'utilisateur courant depuis userMetadata
+    final StorageService storageService = StorageService();
+    final currentUser = storageService.getUser();
+    if (currentUser == null) return 0;
+
+    // Chercher dans userMetadata l'utilisateur courant
+    final currentUserMetadata = userMetadata.firstWhere(
+      (meta) =>
+          meta.userId == currentUser.matricule || meta.userId == currentUser.id,
+      orElse: () => ParticipantMetadata(
+        userId: '',
+        unreadCount: 0,
+        isMuted: false,
+        isPinned: false,
+        notificationSettings: NotificationSettings(
+          enabled: true,
+          sound: true,
+          vibration: true,
+        ),
+        nom: '',
+        prenom: '',
+        metadataId: '',
+      ),
+    );
+
+    return currentUserMetadata.unreadCount;
   }
 
   String get displayName {
@@ -426,30 +450,32 @@ class ParticipantMetadata {
   final NotificationSettings notificationSettings;
 
   @HiveField(7)
-  final String name;
+  final String nom; // Nom de famille
 
   @HiveField(8)
-  final String? avatar;
+  final String prenom; // Prénom
 
   @HiveField(9)
+  final String? avatar;
+
+  @HiveField(10)
   final String metadataId;
 
-  // Champs calculés pour nom et prénom
-  String get nom {
-    final parts = name.split(' ');
-    if (parts.length > 1) {
-      return parts.sublist(0, parts.length - 1).join(' ');
-    }
-    return name;
-  }
+  @HiveField(11)
+  final String? sexe; // Genre (M, F, etc.)
 
-  String get prenom {
-    final parts = name.split(' ');
-    if (parts.isNotEmpty) {
-      return parts.last;
-    }
-    return '';
-  }
+  @HiveField(12)
+  final String? departement; // Département de l'utilisateur
+
+  @HiveField(13)
+  final String? ministere; // Ministère de l'utilisateur
+
+  // Propriété calculée pour retrouver le nom complet
+  String get name => '$prenom $nom'.trim();
+
+  // Getters pour accès aux composants du nom
+  String get nomDisplay => nom;
+  String get prenomDisplay => prenom;
 
   ParticipantMetadata({
     required this.userId,
@@ -459,9 +485,13 @@ class ParticipantMetadata {
     required this.isPinned,
     this.customName,
     required this.notificationSettings,
-    required this.name,
+    required this.nom,
+    required this.prenom,
     this.avatar,
     required this.metadataId,
+    this.sexe,
+    this.departement,
+    this.ministere,
   });
 
   factory ParticipantMetadata.fromJson(Map<String, dynamic> json) {
@@ -475,11 +505,14 @@ class ParticipantMetadata {
       customName: json['customName']?.toString(),
       notificationSettings:
           NotificationSettings.fromJson(json['notificationSettings'] ?? {}),
-      name: '${json['prenom'] ?? ''} ${json['nom'] ?? ''}'
-          .trim(), // Combiner prenom et nom
+      nom: json['nom']?.toString() ?? '',
+      prenom: json['prenom']?.toString() ?? '',
       avatar: json['avatar']?.toString(),
       metadataId:
           json['_id']?['\$oid']?.toString() ?? json['_id']?.toString() ?? '',
+      sexe: json['sexe']?.toString(),
+      departement: json['departement']?.toString(),
+      ministere: json['ministere']?.toString(),
     );
   }
 
@@ -493,9 +526,13 @@ class ParticipantMetadata {
       'isPinned': isPinned,
       'customName': customName,
       'notificationSettings': notificationSettings.toJson(),
-      'name': name,
+      'nom': nom,
+      'prenom': prenom,
       'avatar': avatar,
       '_id': {'\$oid': metadataId},
+      'sexe': sexe,
+      'departement': departement,
+      'ministere': ministere,
     };
   }
 }
@@ -551,12 +588,16 @@ class LastMessage {
   @HiveField(4)
   final DateTime timestamp;
 
+  @HiveField(5)
+  final MessageStatus status;
+
   LastMessage({
     required this.content,
     required this.type,
     required this.senderId,
     this.senderName,
     required this.timestamp,
+    required this.status,
   });
 
   factory LastMessage.fromJson(Map<String, dynamic> json) {
@@ -566,6 +607,7 @@ class LastMessage {
       senderId: json['senderId']?.toString() ?? '',
       senderName: json['senderName']?.toString(),
       timestamp: _extractDate(json['timestamp']),
+      status: Message.parseMessageStatus(json['status']?.toString()),
     );
   }
 
@@ -576,6 +618,7 @@ class LastMessage {
       'senderId': senderId,
       'senderName': senderName,
       'timestamp': {'\$date': timestamp.toIso8601String()},
+      'status': Message.messageStatusToString(status),
     };
   }
 }

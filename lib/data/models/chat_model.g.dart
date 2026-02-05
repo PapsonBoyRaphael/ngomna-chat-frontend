@@ -106,16 +106,20 @@ class ParticipantMetadataAdapter extends TypeAdapter<ParticipantMetadata> {
       isPinned: fields[4] as bool,
       customName: fields[5] as String?,
       notificationSettings: fields[6] as NotificationSettings,
-      name: fields[7] as String,
-      avatar: fields[8] as String?,
-      metadataId: fields[9] as String,
+      nom: fields[7] as String,
+      prenom: fields[8] as String,
+      avatar: fields[9] as String?,
+      metadataId: fields[10] as String,
+      sexe: fields[11] as String?,
+      departement: fields[12] as String?,
+      ministere: fields[13] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ParticipantMetadata obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.userId)
       ..writeByte(1)
@@ -131,11 +135,19 @@ class ParticipantMetadataAdapter extends TypeAdapter<ParticipantMetadata> {
       ..writeByte(6)
       ..write(obj.notificationSettings)
       ..writeByte(7)
-      ..write(obj.name)
+      ..write(obj.nom)
       ..writeByte(8)
-      ..write(obj.avatar)
+      ..write(obj.prenom)
       ..writeByte(9)
-      ..write(obj.metadataId);
+      ..write(obj.avatar)
+      ..writeByte(10)
+      ..write(obj.metadataId)
+      ..writeByte(11)
+      ..write(obj.sexe)
+      ..writeByte(12)
+      ..write(obj.departement)
+      ..writeByte(13)
+      ..write(obj.ministere);
   }
 
   @override
@@ -205,13 +217,14 @@ class LastMessageAdapter extends TypeAdapter<LastMessage> {
       senderId: fields[2] as String,
       senderName: fields[3] as String?,
       timestamp: fields[4] as DateTime,
+      status: fields[5] as MessageStatus,
     );
   }
 
   @override
   void write(BinaryWriter writer, LastMessage obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.content)
       ..writeByte(1)
@@ -221,7 +234,9 @@ class LastMessageAdapter extends TypeAdapter<LastMessage> {
       ..writeByte(3)
       ..write(obj.senderName)
       ..writeByte(4)
-      ..write(obj.timestamp);
+      ..write(obj.timestamp)
+      ..writeByte(5)
+      ..write(obj.status);
   }
 
   @override

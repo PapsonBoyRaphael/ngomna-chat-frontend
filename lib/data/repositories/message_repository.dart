@@ -110,6 +110,13 @@ class MessageRepository {
     // Messages chargés depuis le serveur
     _socketService.messagesLoadedStream.listen(_handleMessagesLoaded);
 
+    // Changements de statut des messages
+    _socketService.messageStatusChangedStream
+        .listen(_handleMessageStatusChanged);
+
+    // Messages marqués comme lus
+    _socketService.messageReadStream.listen(_handleMessageRead);
+
     // Typing
     _socketService.userTypingStream.listen((convId) {
       _typingController.add(convId);
@@ -361,6 +368,17 @@ class MessageRepository {
     print(
         '📊 [MessageRepository] Messages groupés par conversation: ${groupedMessages.keys.length} conversations');
 
+    // Marquer les messages non-lus comme delivered
+    for (final message in messages) {
+      if (message.id.isNotEmpty &&
+          !_isMessageFromMe(message) &&
+          message.status.index < MessageStatus.delivered.index) {
+        print(
+            '📬 [MessageRepository] Marquage message comme delivered lors du chargement: ${message.id}');
+        markMessageDelivered(message.id, message.conversationId);
+      }
+    }
+
     // Mettre à jour chaque cache de conversation avec merge
     for (final entry in groupedMessages.entries) {
       final convId = entry.key;
@@ -581,15 +599,6 @@ class MessageRepository {
     }
   }
 
-  /// Vérifier si deux listes de messages sont égales
-  bool _areListsEqual(List<Message> a, List<Message> b) {
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
-
   /// Nettoyer les ressources
   void dispose() {
     for (final controller in _messageStreams.values) {
@@ -599,5 +608,108 @@ class MessageRepository {
     _messagesCache.clear();
     _pendingMessages.clear();
     _typingController.close();
+  }
+
+  /// Gérer les changements de statut des messages
+  void _handleMessageStatusChanged(Map<String, dynamic> data) {
+    final messageId = data['messageId'] as String?;
+    final status = data['status'] as String?;
+
+    if (messageId == null || status == null) {
+      print('❌ Données invalides pour messageStatusChanged: $data');
+      return;
+    }
+
+    print('🔄 [MessageRepository] Changement de statut: $messageId -> $status');
+
+    // Convertir le statut string en enum
+    final messageStatus = Message.parseMessageStatus(status);
+
+    // Trouver et mettre à jour le message dans toutes les conversations
+    bool messageFound = false;
+    for (final conversationId in _messagesCache.keys) {
+      final messages = _messagesCache[conversationId]!;
+      final index = messages.indexWhere((msg) => msg.id == messageId);
+
+      if (index != -1) {
+        final oldMessage = messages[index];
+        final updatedMessage = oldMessage.copyWith(status: messageStatus);
+
+        messages[index] = updatedMessage;
+        messageFound = true;
+
+        print(
+            '✅ [MessageRepository] Statut mis à jour: ${oldMessage.status} -> ${updatedMessage.status}');
+
+        // Sauvegarder dans Hive
+        _hiveService.saveMessages(messages);
+
+        // Notifier les listeners de la conversation
+        if (_messageStreams.containsKey(conversationId)) {
+          _messageStreams[conversationId]!.add(messages);
+        }
+
+        break; // On suppose qu'un message n'est que dans une conversation
+      }
+    }
+
+    if (!messageFound) {
+      print(
+          '⚠️ [MessageRepository] Message non trouvé dans le cache: $messageId');
+    }
+  }
+
+  /// Gérer les messages marqués comme lus
+  void _handleMessageRead(Map<String, dynamic> data) {
+    final messageId = data['messageId'] as String?;
+    final status = data['status'] as String?;
+
+    if (messageId == null || status != 'READ') {
+      print('❌ Données invalides pour messageRead: $data');
+      return;
+    }
+
+    print('📖 [MessageRepository] Message marqué comme lu: $messageId');
+
+    // Trouver et mettre à jour le message
+    bool messageFound = false;
+    String? conversationId;
+
+    for (final convId in _messagesCache.keys) {
+      final messages = _messagesCache[convId]!;
+      final index = messages.indexWhere((msg) => msg.id == messageId);
+
+      if (index != -1) {
+        final oldMessage = messages[index];
+        final updatedMessage = oldMessage.copyWith(status: MessageStatus.read);
+
+        messages[index] = updatedMessage;
+        messageFound = true;
+        conversationId = convId;
+
+        print(
+            '✅ [MessageRepository] Message marqué comme lu: ${oldMessage.status} -> ${updatedMessage.status}');
+
+        // Sauvegarder dans Hive
+        _hiveService.saveMessages(messages);
+
+        // Notifier les listeners de la conversation
+        if (_messageStreams.containsKey(convId)) {
+          _messageStreams[convId]!.add(messages);
+        }
+
+        break;
+      }
+    }
+
+    if (messageFound && conversationId != null) {
+      // Mettre à jour les compteurs non lus dans le ChatListRepository
+      print(
+          '🔄 [MessageRepository] Mise à jour des compteurs non lus pour conversation: $conversationId');
+      // Cette mise à jour sera gérée par le ChatListRepository qui écoute aussi ces événements
+    } else {
+      print(
+          '⚠️ [MessageRepository] Message non trouvé pour mark as read: $messageId');
+    }
   }
 }

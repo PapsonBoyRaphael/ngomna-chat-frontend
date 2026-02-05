@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/repositories/chat_list_repository.dart';
+import 'package:ngomna_chat/data/services/storage_service.dart';
 import 'package:ngomna_chat/core/utils/date_formatter.dart';
 import 'dart:async';
 
@@ -41,11 +42,7 @@ class ChatListViewModel extends ChangeNotifier {
 
   // Nombre de conversations avec messages non lus pour l'utilisateur courant
   int get unreadConversationsCount {
-    final currentUserId = 'current_user_id_placeholder';
-    return _chats.where((chat) {
-      final userCount = chat.unreadCounts[currentUserId] ?? 0;
-      return userCount > 0;
-    }).length;
+    return _chats.where((chat) => chat.unreadCount > 0).length;
   }
 
   ChatListViewModel({
@@ -138,11 +135,14 @@ class ChatListViewModel extends ChangeNotifier {
     _totalUnreadMessages = 0;
     _userUnreadCounts.clear();
 
-    // TODO: Remplacer par le userId de l'utilisateur connecté
-    final currentUserId = 'current_user_id_placeholder';
+    // Récupérer l'utilisateur actuel
+    final storageService = StorageService();
+    final currentUser = storageService.getUser();
+    final currentUserId = currentUser?.matricule ?? currentUser?.id ?? '';
 
     for (final chat in _chats) {
-      final userUnread = chat.unreadCounts[currentUserId] ?? 0;
+      final userUnread = chat
+          .unreadCount; // Utiliser le getter qui calcule pour l'utilisateur actuel
       _totalUnreadMessages += userUnread;
 
       // Stocker par conversation et utilisateur
@@ -166,10 +166,9 @@ class ChatListViewModel extends ChangeNotifier {
         _filteredChats = List.from(_chats);
         break;
       case ChatFilter.unread:
-        // TODO: Filtrer par userId connecté
-        final currentUserId = 'current_user_id_placeholder';
+        // Filtrer les conversations avec des messages non lus pour l'utilisateur actuel
         _filteredChats = _chats.where((chat) {
-          return (chat.unreadCounts[currentUserId] ?? 0) > 0;
+          return chat.unreadCount > 0;
         }).toList();
         break;
       case ChatFilter.groups:
@@ -223,8 +222,10 @@ class ChatListViewModel extends ChangeNotifier {
   /// Marquer une conversation comme lue
   Future<void> markConversationAsRead(String conversationId) async {
     try {
-      // TODO: Récupérer l'ID de l'utilisateur courant depuis AuthViewModel
-      final currentUserId = 'current_user_id_placeholder';
+      // Récupérer l'utilisateur actuel
+      final storageService = StorageService();
+      final currentUser = storageService.getUser();
+      final currentUserId = currentUser?.matricule ?? currentUser?.id ?? '';
 
       await _chatListRepository.markChatAsRead(conversationId, currentUserId);
       print('✅ Conversation $conversationId marquée comme lue');

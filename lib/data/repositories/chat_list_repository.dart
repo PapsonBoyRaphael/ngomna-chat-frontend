@@ -3,6 +3,7 @@ import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'package:ngomna_chat/data/services/hive_service.dart';
+import 'package:ngomna_chat/data/services/storage_service.dart';
 import 'package:ngomna_chat/data/repositories/auth_repository.dart';
 
 class ChatListRepository {
@@ -88,6 +89,13 @@ class ChatListRepository {
 
     // Confirmations d'envoi de messages
     _socketService.messageSentStream.listen(_handleMessageSent);
+
+    // Changements de statut des messages (pour mettre à jour les compteurs non lus)
+    _socketService.messageStatusChangedStream
+        .listen(_handleMessageStatusChanged);
+
+    // Messages marqués comme lus (pour mettre à jour les compteurs non lus)
+    _socketService.messageReadStream.listen(_handleMessageRead);
 
     // Conversations mises à jour depuis le serveur
     _socketService.conversationUpdateStream.listen(_handleConversationsLoaded);
@@ -186,6 +194,7 @@ class ChatListRepository {
             senderId: message.senderId,
             senderName: message.senderName,
             timestamp: message.timestamp,
+            status: message.status,
           ),
           lastMessageAt: message.timestamp,
           updatedAt: DateTime.now(),
@@ -255,6 +264,7 @@ class ChatListRepository {
           senderId: message.senderId,
           senderName: message.senderName,
           timestamp: message.timestamp,
+          status: message.status,
         ),
         lastMessageAt: message.timestamp,
         updatedAt: DateTime.now(),
@@ -338,14 +348,102 @@ class ChatListRepository {
       // Notifier les listeners
       _conversationUpdateController.add(_chatsCache.values.toList());
 
-      // Informer le serveur
-      _socketService.markMessageRead(
-          '', chatId); // TODO: Implémenter côté serveur
+      // Note: Les messages individuels sont marqués comme lus automatiquement
+      // via MessageRepository._handleNewMessage() qui appelle markMessageRead()
+      // pour chaque message non-lu reçu.
     }
   }
 
   /// Fermer les ressources
   void dispose() {
     _conversationUpdateController.close();
+  }
+
+  /// Gérer les changements de statut des messages
+  void _handleMessageStatusChanged(Map<String, dynamic> data) {
+    // Vérifier que l'utilisateur est authentifié avant de traiter l'événement
+    if (!_socketService.isAuthenticated) {
+      print(
+          '⚠️ [ChatListRepository] Événement messageStatusChanged ignoré - utilisateur non authentifié');
+      return;
+    }
+
+    final messageId = data['messageId'] as String?;
+    final status = data['status'] as String?;
+    final userId = data['userId'] as String?;
+
+    if (messageId == null || status == null || userId == null) {
+      print('❌ Données invalides pour messageStatusChanged: $data');
+      return;
+    }
+
+    print(
+        '🔄 [ChatListRepository] Changement de statut reçu: $messageId -> $status pour user $userId');
+
+    // Si le statut est "READ", mettre à jour les compteurs non lus
+    if (status == 'READ') {
+      _updateUnreadCountForUser(userId);
+    }
+  }
+
+  /// Gérer les messages marqués comme lus
+  void _handleMessageRead(Map<String, dynamic> data) {
+    // Vérifier que l'utilisateur est authentifié avant de traiter l'événement
+    if (!_socketService.isAuthenticated) {
+      print(
+          '⚠️ [ChatListRepository] Événement messageRead ignoré - utilisateur non authentifié');
+      return;
+    }
+
+    final messageId = data['messageId'] as String?;
+    final status = data['status'] as String?;
+
+    if (messageId == null || status != 'READ') {
+      print('❌ Données invalides pour messageRead: $data');
+      return;
+    }
+
+    print('📖 [ChatListRepository] Message marqué comme lu: $messageId');
+
+    // Mettre à jour les compteurs non lus pour l'utilisateur actuel
+    // (l'événement messageRead est envoyé à l'utilisateur qui a marqué le message comme lu)
+    final currentUser = StorageService().getUser();
+    if (currentUser != null) {
+      _updateUnreadCountForUser(currentUser.matricule);
+    }
+  }
+
+  /// Mettre à jour les compteurs non lus pour un utilisateur spécifique
+  void _updateUnreadCountForUser(String userId) {
+    print(
+        '🔄 [ChatListRepository] Mise à jour des compteurs non lus pour user: $userId');
+
+    // Pour chaque conversation, recalculer le nombre de messages non lus
+    // Cette logique devrait être alignée avec celle du serveur
+    bool hasUpdates = false;
+
+    for (final chatId in _chatsCache.keys) {
+      final chat = _chatsCache[chatId]!;
+
+      // Le serveur devrait avoir mis à jour les userMetadata, mais comme on reçoit
+      // l'événement, on peut décrémenter le compteur localement
+      final currentCount = chat.unreadCounts[userId] ?? 0;
+      if (currentCount > 0) {
+        final updatedChat = chat.copyWith(
+          unreadCounts: {...chat.unreadCounts, userId: currentCount - 1},
+        );
+        _chatsCache[chatId] = updatedChat;
+        hasUpdates = true;
+        print(
+            '📉 [ChatListRepository] Compteur décrémenté pour $chatId: $currentCount -> ${currentCount - 1}');
+      }
+    }
+
+    if (hasUpdates) {
+      // Notifier les listeners avec les conversations mises à jour
+      _conversationUpdateController.add(_chatsCache.values.toList());
+      print(
+          '📢 [ChatListRepository] Notifications envoyées pour mise à jour des compteurs');
+    }
   }
 }

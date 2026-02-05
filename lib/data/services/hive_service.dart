@@ -89,6 +89,19 @@ class HiveService {
     }
   }
 
+  /// Récupérer tous les messages
+  Future<List<Message>> getAllMessages() async {
+    try {
+      final box = await Hive.openBox<Message>(_messagesBox);
+      final messages = box.values.toList();
+      print('📥 ${messages.length} messages récupérés au total');
+      return messages;
+    } catch (e) {
+      print('❌ Erreur récupération tous les messages: $e');
+      return [];
+    }
+  }
+
   /// Supprimer les messages d'une conversation
   Future<void> deleteMessagesForConversation(String conversationId) async {
     try {
@@ -163,6 +176,20 @@ class HiveService {
     }
   }
 
+  /// Alias pour getChat (utilisé dans chat_storage_orchestrator)
+  Future<Chat?> getChatById(String chatId) => getChat(chatId);
+
+  /// Supprimer une conversation
+  Future<void> deleteChat(String chatId) async {
+    try {
+      final box = await Hive.openBox<Chat>(_chatsBox);
+      await box.delete(chatId);
+      print('🗑️ Conversation supprimée: $chatId');
+    } catch (e) {
+      print('❌ Erreur suppression conversation: $e');
+    }
+  }
+
   /// Mettre à jour le dernier message d'une conversation
   Future<void> updateChatLastMessage(String chatId, String lastMessage,
       DateTime timestamp, String senderId) async {
@@ -174,6 +201,7 @@ class HiveService {
           senderId: senderId,
           timestamp: timestamp,
           type: 'TEXT',
+          status: MessageStatus.sent,
         );
         final updatedChat = chat.copyWith(
           lastMessage: newLastMessage,

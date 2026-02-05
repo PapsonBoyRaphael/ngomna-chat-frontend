@@ -61,8 +61,6 @@ class MessageViewModel extends ChangeNotifier {
     });
   }
 
-  Timer? _pollingTimer;
-
   /// Charger les messages
   Future<void> loadMessages({bool forceRefresh = false}) async {
     print('🚀 [MessageViewModel] loadMessages pour $_conversationId');
@@ -115,17 +113,11 @@ class MessageViewModel extends ChangeNotifier {
   /// Marquer tous les messages comme lus
   Future<void> markAllAsRead(String conversationId) async {
     try {
-      // Marquer tous les messages comme lus dans le cache local
-      final messages = _messages;
-      for (final message in messages) {
-        if (message.status != MessageStatus.read) {
-          // TODO: Mettre à jour le statut local
-        }
-      }
-
-      // Informer le serveur via Socket.IO
-      await _socketService.markMessageRead(
-          '', conversationId); // TODO: Implémenter markAllAsRead côté serveur
+      // Les messages sont marqués comme lus automatiquement quand ils sont reçus
+      // via MessageRepository._handleNewMessage() qui appelle markMessageRead()
+      // pour chaque message non-lu reçu de l'utilisateur actuel.
+      print(
+          '📖 [MessageViewModel] Les messages sont marqués lus automatiquement');
     } catch (e) {
       print('❌ [MessageViewModel] Erreur markAllAsRead: $e');
     }
