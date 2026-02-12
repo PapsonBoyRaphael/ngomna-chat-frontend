@@ -183,11 +183,13 @@ class _NewChatContent extends StatelessWidget {
                 'chatId': contact.id,
                 'user': User(
                   id: contact.id,
-                  matricule: contact
-                      .id, // Utilisation de l'ID comme matricule par défaut
-                  nom: contact.name.split(' ').first, // Extraction du prénom
-                  prenom: contact.name.split(' ').last, // Extraction du nom
+                  matricule: contact.id,
+                  nom: contact.name.split(' ').first,
+                  prenom: contact.name.split(' ').length > 1
+                      ? contact.name.split(' ').sublist(1).join(' ')
+                      : '',
                   avatarUrl: contact.avatarUrl,
+                  isOnline: contact.isOnline,
                 ),
               },
             );
@@ -210,11 +212,13 @@ class _NewChatContent extends StatelessWidget {
                 'chatId': contact.id,
                 'user': User(
                   id: contact.id,
-                  matricule: contact
-                      .id, // Utilisation de l'ID comme matricule par défaut
-                  nom: contact.name.split(' ').first, // Extraction du prénom
-                  prenom: contact.name.split(' ').last, // Extraction du nom
+                  matricule: contact.id,
+                  nom: contact.name.split(' ').first,
+                  prenom: contact.name.split(' ').length > 1
+                      ? contact.name.split(' ').sublist(1).join(' ')
+                      : '',
                   avatarUrl: contact.avatarUrl,
+                  isOnline: contact.isOnline,
                 ),
               },
             );

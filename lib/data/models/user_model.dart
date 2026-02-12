@@ -7,6 +7,7 @@ class User {
   final String? sexe;
   final String? avatarUrl;
   final bool isOnline;
+  final DateTime? lastSeen; // Dernière connexion
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -19,6 +20,7 @@ class User {
     this.sexe = '',
     this.avatarUrl = '',
     this.isOnline = false,
+    this.lastSeen,
     this.createdAt,
     this.updatedAt,
   });
@@ -60,6 +62,11 @@ class User {
       sexe: json['sexe'] as String? ?? '',
       avatarUrl: json['avatarUrl'] as String? ?? '',
       isOnline: json['isOnline'] as bool? ?? false,
+      lastSeen: json['lastSeen'] != null
+          ? DateTime.tryParse(json['lastSeen'] as String)
+          : (json['lastActivity'] != null
+              ? DateTime.tryParse(json['lastActivity'] as String)
+              : null),
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(
               json['createdAt'] as String) // Utilisation de tryParse
@@ -81,6 +88,7 @@ class User {
       if (sexe != null && sexe!.isNotEmpty) 'sexe': sexe,
       if (avatarUrl != null && avatarUrl!.isNotEmpty) 'avatarUrl': avatarUrl,
       'isOnline': isOnline,
+      if (lastSeen != null) 'lastSeen': lastSeen!.toIso8601String(),
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
       if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
     };
@@ -96,6 +104,7 @@ class User {
     String? sexe,
     String? avatarUrl,
     bool? isOnline,
+    DateTime? lastSeen,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -108,6 +117,7 @@ class User {
       sexe: sexe ?? this.sexe,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       isOnline: isOnline ?? this.isOnline,
+      lastSeen: lastSeen ?? this.lastSeen,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

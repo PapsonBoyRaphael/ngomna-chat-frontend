@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:hive/hive.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
@@ -101,6 +102,45 @@ class ChatListRepository {
     _socketService.conversationUpdateStream.listen(_handleConversationsLoaded);
     print(
         '👂 [ChatListRepository] Listener conversationUpdateStream configuré');
+
+    // 🟢 Écouter les événements de présence
+    _socketService.presenceUpdateStream.listen(_handlePresenceUpdate);
+    print('👂 [ChatListRepository] Listener presenceUpdateStream configuré');
+
+    // Écouter les événements de conversation depuis ChatStreamManager
+    _socketService.streamManager.conversationStream
+        .listen(_handleConversationEvent);
+    print('👂 [ChatListRepository] Listener conversationStream configuré');
+
+    // Écouter les nouveaux messages depuis ChatStreamManager
+    _socketService.streamManager.messageStream.listen((event) {
+      // Émettre les messages pour tous les contextes (private, group, channel)
+      // mais pas les mises à jour de statut
+      print(
+          '🔍 [ChatListRepository] Événement ChatStreamManager reçu - type: ${event.type}, context: ${event.context}, source: ${event.source}');
+
+      if (event.context == 'private' ||
+          event.context == 'group' ||
+          event.context == 'channel') {
+        print(
+            '📨 [ChatListRepository] Nouveau message depuis ChatStreamManager: ${event.messageId}');
+        // Reconstruire la Map à partir de l'événement
+        final messageData = {
+          'messageId': event.messageId,
+          'conversationId': event.conversationId,
+          'senderId': event.senderId,
+          'senderName': event.senderName,
+          'content': event.content,
+          'type': event.type,
+          'status': event.status,
+          'timestamp': event.timestamp.toIso8601String(),
+          'metadata': event.metadata,
+          'context': event.context,
+        };
+        _handleNewMessage(messageData);
+      }
+    });
+    print('👂 [ChatListRepository] Listener messageStream configuré');
   }
 
   /// Charger les conversations
@@ -185,10 +225,66 @@ class ChatListRepository {
         }
 
         print(
-            '📌 [ChatListRepository] unreadCounts extraits de userMetadata: $updatedUnreadCounts');
+            '📌 [ChatListRepository] unreadCounts extraits de userMetadata (avant): $updatedUnreadCounts');
+
+        // Incrémenter le unreadCount pour l'utilisateur courant si le message n'est pas de lui
+        final currentUser = StorageService().getUser();
+        print(
+            '🔍 [ChatListRepository] Vérification utilisateur courant: currentUser=${currentUser?.matricule}, senderId=${message.senderId}');
+
+        var updatedUserMetadata = chatFromHive.userMetadata;
+
+        if (currentUser != null) {
+          print(
+              '✅ [ChatListRepository] currentUser trouvé: ${currentUser.matricule}');
+          if (message.senderId != currentUser.matricule) {
+            print(
+                '✅ [ChatListRepository] Message de quelqu\'un d\'autre (${message.senderId}), incrémentant unreadCount');
+            final currentCount =
+                updatedUnreadCounts[currentUser.matricule] ?? 0;
+            updatedUnreadCounts[currentUser.matricule] = currentCount + 1;
+            print(
+                '📈 [ChatListRepository] unreadCount incrémenté pour ${currentUser.matricule}: $currentCount -> ${currentCount + 1}');
+
+            // Aussi mettre à jour userMetadata pour que le getter unreadCount retourne la bonne valeur
+            updatedUserMetadata = chatFromHive.userMetadata.map((meta) {
+              if (meta.userId == currentUser.matricule) {
+                print(
+                    '✅ [ChatListRepository] Mise à jour userMetadata unreadCount pour ${currentUser.matricule}: ${meta.unreadCount} -> ${currentCount + 1}');
+                return ParticipantMetadata(
+                  userId: meta.userId,
+                  unreadCount: currentCount + 1,
+                  lastReadAt: meta.lastReadAt,
+                  isMuted: meta.isMuted,
+                  isPinned: meta.isPinned,
+                  customName: meta.customName,
+                  notificationSettings: meta.notificationSettings,
+                  nom: meta.nom,
+                  prenom: meta.prenom,
+                  avatar: meta.avatar,
+                  metadataId: meta.metadataId,
+                  sexe: meta.sexe,
+                  departement: meta.departement,
+                  ministere: meta.ministere,
+                );
+              }
+              return meta;
+            }).toList();
+          } else {
+            print(
+                '⏭️ [ChatListRepository] Message de l\'utilisateur lui-même (${message.senderId}), pas d\'incrémentation');
+          }
+        } else {
+          print(
+              '❌ [ChatListRepository] currentUser est null, impossible d\'incrémenter unreadCount');
+        }
+
+        print(
+            '📌 [ChatListRepository] unreadCounts mis à jour (après): $updatedUnreadCounts');
 
         final updatedChat = chatFromHive.copyWith(
           lastMessage: LastMessage(
+            id: message.id,
             content: message.content,
             type: Message.messageTypeToString(message.type),
             senderId: message.senderId,
@@ -199,6 +295,7 @@ class ChatListRepository {
           lastMessageAt: message.timestamp,
           updatedAt: DateTime.now(),
           unreadCounts: updatedUnreadCounts,
+          userMetadata: updatedUserMetadata,
         );
 
         print(
@@ -259,6 +356,7 @@ class ChatListRepository {
 
       final updatedChat = chatFromHive.copyWith(
         lastMessage: LastMessage(
+          id: message.id,
           content: message.content,
           type: Message.messageTypeToString(message.type),
           senderId: message.senderId,
@@ -294,7 +392,32 @@ class ChatListRepository {
           try {
             final chat = Chat.fromJson(convData as Map<String, dynamic>);
             chats.add(chat);
-            print('✅ Conversation parsée: ${chat.id}');
+            print('✅ Conversation parsée: ${chat.id} (${chat.name})');
+
+            // 🟢 Afficher les données de présence des participants
+            print('   👥 Participants avec présence:');
+            for (final metadata in chat.userMetadata) {
+              final presence = metadata.presence;
+              if (presence != null) {
+                print(
+                    '      - ${metadata.nom} ${metadata.prenom} (${metadata.userId}): '
+                    '${presence.isOnline ? "🟢 EN LIGNE" : "🔴 HORS LIGNE"} '
+                    '(status: ${presence.status}, lastActivity: ${presence.lastActivity})');
+              } else {
+                print(
+                    '      - ${metadata.nom} ${metadata.prenom} (${metadata.userId}): ⚪ Pas de données de présence');
+              }
+            }
+
+            // 🟢 Afficher les statistiques de présence globales
+            final stats = chat.presenceStats;
+            if (stats != null) {
+              print(
+                  '   📊 Stats présence: ${stats.onlineCount}/${stats.totalParticipants} en ligne');
+              print('      - En ligne: ${stats.onlineParticipants.join(", ")}');
+            } else {
+              print('   📊 Stats présence: Non disponibles');
+            }
           } catch (e) {
             print('❌ Erreur conversion conversation: $e');
           }
@@ -318,12 +441,247 @@ class ChatListRepository {
   /// Sauvegarder les conversations dans Hive
   Future<void> _saveChatsToHive(List<Chat> chats) async {
     try {
+      print(
+          '🔍 [ChatListRepository] Début sauvegarde ${chats.length} conversations');
+      print('🔧 Vérification adapters AVANT sauvegarde:');
+      print('   - UserPresence (typeId 20): ${Hive.isAdapterRegistered(20)}');
+      print('   - PresenceStats (typeId 21): ${Hive.isAdapterRegistered(21)}');
+
       for (final chat in chats) {
         await _hiveService.saveChat(chat);
       }
       print('💾 [ChatListRepository] Conversations sauvegardées dans Hive');
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ [ChatListRepository] Erreur sauvegarde Hive: $e');
+      print(
+          '📍 StackTrace: ${stackTrace.toString().split('\n').take(5).join('\n')}');
+    }
+  }
+
+  /// 🟢 Gérer les événements de présence utilisateur
+  void _handlePresenceUpdate(Map<String, dynamic> eventData) {
+    print('🟢 [ChatListRepository] Événement présence reçu');
+    try {
+      final type = eventData['type'] as String?;
+      final data = eventData['data'];
+
+      print('   - Type: $type');
+      print('   - Data: $data');
+
+      switch (type) {
+        case 'update':
+          // Un utilisateur a changé de statut (online/offline)
+          if (data is Map<String, dynamic>) {
+            final userId = data['userId'] as String?;
+            final isOnline = data['isOnline'] as bool?;
+            final status = data['status'] as String?;
+            print(
+                '   🔄 Mise à jour présence: userId=$userId, isOnline=$isOnline, status=$status');
+
+            // TODO: Mettre à jour le statut de présence dans le cache des conversations
+            _updateUserPresenceInCache(userId, isOnline, status);
+          }
+          break;
+
+        case 'online_users':
+          // Liste des utilisateurs en ligne dans une conversation
+          if (data is Map<String, dynamic>) {
+            final conversationId = data['conversationId'] as String?;
+            final onlineUsers = data['onlineUsers'] as List?;
+            print(
+                '   👥 Utilisateurs en ligne dans $conversationId: ${onlineUsers?.length ?? 0}');
+
+            // TODO: Mettre à jour la liste des utilisateurs en ligne
+            _updateOnlineUsersInConversation(conversationId, onlineUsers);
+          }
+          break;
+
+        case 'user_online':
+          // 🆕 Un utilisateur vient de se connecter
+          if (data is Map<String, dynamic>) {
+            final userId = data['userId'] as String?;
+            final matricule = data['matricule'] as String?;
+            final timestamp = data['timestamp'];
+            print(
+                '   🟢 Utilisateur EN LIGNE: userId=$userId, matricule=$matricule');
+            _updateUserPresenceInCache(userId ?? matricule, true, 'online');
+          }
+          break;
+
+        case 'user_offline':
+          // 🆕 Un utilisateur vient de se déconnecter
+          if (data is Map<String, dynamic>) {
+            final userId = data['userId'] as String?;
+            final matricule = data['matricule'] as String?;
+            final timestamp = data['timestamp'];
+            print(
+                '   🔴 Utilisateur HORS LIGNE: userId=$userId, matricule=$matricule');
+            _updateUserPresenceInCache(userId ?? matricule, false, 'offline');
+          }
+          break;
+
+        default:
+          print('   ⚠️ Type d\'événement présence non géré: $type');
+      }
+    } catch (e, stackTrace) {
+      print('❌ [ChatListRepository] Erreur _handlePresenceUpdate: $e');
+      print(
+          '📍 StackTrace: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+    }
+  }
+
+  /// Mettre à jour la présence d'un utilisateur dans le cache
+  void _updateUserPresenceInCache(
+      String? userId, bool? isOnline, String? status) {
+    if (userId == null) return;
+
+    print('🔄 [ChatListRepository] Mise à jour présence cache pour $userId');
+    print('   - isOnline: $isOnline, status: $status');
+
+    int updatedCount = 0;
+
+    // Parcourir toutes les conversations et mettre à jour la présence
+    for (final chatId in _chatsCache.keys.toList()) {
+      final chat = _chatsCache[chatId]!;
+      final participantIndex =
+          chat.userMetadata.indexWhere((m) => m.userId == userId);
+
+      if (participantIndex != -1) {
+        print('   ✅ Utilisateur $userId trouvé dans conversation ${chat.id}');
+
+        // Créer une nouvelle UserPresence
+        final newPresence = UserPresence(
+          isOnline: isOnline ?? false,
+          status: status ?? (isOnline == true ? 'online' : 'offline'),
+          lastActivity: DateTime.now(),
+          disconnectedAt: isOnline == false ? DateTime.now() : null,
+        );
+
+        // Créer une copie du participant avec la nouvelle présence
+        final updatedParticipant = chat.userMetadata[participantIndex].copyWith(
+          presence: newPresence,
+        );
+
+        // Créer une nouvelle liste de userMetadata
+        final updatedUserMetadata =
+            List<ParticipantMetadata>.from(chat.userMetadata);
+        updatedUserMetadata[participantIndex] = updatedParticipant;
+
+        // Créer une nouvelle instance de Chat avec les métadonnées mises à jour
+        final updatedChat = chat.copyWith(userMetadata: updatedUserMetadata);
+
+        // Mettre à jour le cache
+        _chatsCache[chatId] = updatedChat;
+        updatedCount++;
+
+        print(
+            '   ✅ Présence mise à jour: ${updatedParticipant.userId} -> isOnline=${newPresence.isOnline}');
+      }
+    }
+
+    print('📨 Conversations mises à jour: $updatedCount');
+
+    // Notifier les listeners avec les données mises à jour
+    _conversationUpdateController.add(_chatsCache.values.toList());
+  }
+
+  /// Mettre à jour la liste des utilisateurs en ligne dans une conversation
+  void _updateOnlineUsersInConversation(
+      String? conversationId, List? onlineUsers) {
+    if (conversationId == null) return;
+
+    print(
+        '🔄 [ChatListRepository] Mise à jour utilisateurs en ligne pour $conversationId');
+    print('   - Utilisateurs en ligne: $onlineUsers');
+
+    final chat = _chatsCache[conversationId];
+    if (chat != null) {
+      print('   ✅ Conversation trouvée dans le cache');
+      // TODO: Mettre à jour les presenceStats
+    } else {
+      print('   ⚠️ Conversation $conversationId non trouvée dans le cache');
+    }
+  }
+
+  /// Gérer les événements de conversation depuis ChatStreamManager
+  void _handleConversationEvent(dynamic eventData) {
+    print('🔔 [ChatListRepository] Événement conversation reçu');
+    try {
+      if (eventData is Map<String, dynamic>) {
+        final conversationId = eventData['conversationId'] as String?;
+        final event = eventData['event'] as String?;
+        final data = eventData['data'] as Map<String, dynamic>?;
+
+        print('📋 Event: $event, ConversationId: $conversationId');
+
+        if (conversationId == null || event == null) {
+          print('⚠️ Événement incomplet ignoré');
+          return;
+        }
+
+        switch (event) {
+          case 'created':
+            _handleConversationCreated(data);
+            break;
+          case 'updated':
+            _handleConversationUpdated(conversationId, data);
+            break;
+          case 'deleted':
+            _handleConversationDeleted(conversationId);
+            break;
+          case 'participant_added':
+          case 'participant_removed':
+            _handleConversationUpdated(conversationId, data);
+            break;
+          default:
+            print('⚠️ Type d\'événement non géré: $event');
+        }
+      }
+    } catch (e) {
+      print('❌ [ChatListRepository] Erreur _handleConversationEvent: $e');
+    }
+  }
+
+  /// Gérer la création d'une conversation
+  void _handleConversationCreated(Map<String, dynamic>? data) {
+    if (data == null) return;
+
+    try {
+      final chat = Chat.fromJson(data);
+      _chatsCache[chat.id] = chat;
+      _hiveService.saveChat(chat);
+      _conversationUpdateController.add(_chatsCache.values.toList());
+      print('✅ [ChatListRepository] Nouvelle conversation ajoutée: ${chat.id}');
+    } catch (e) {
+      print('❌ [ChatListRepository] Erreur _handleConversationCreated: $e');
+    }
+  }
+
+  /// Gérer la mise à jour d'une conversation
+  void _handleConversationUpdated(
+      String conversationId, Map<String, dynamic>? data) {
+    if (data == null) return;
+
+    try {
+      final chat = Chat.fromJson(data);
+      _chatsCache[conversationId] = chat;
+      _hiveService.saveChat(chat);
+      _conversationUpdateController.add(_chatsCache.values.toList());
+      print('✅ [ChatListRepository] Conversation mise à jour: $conversationId');
+    } catch (e) {
+      print('❌ [ChatListRepository] Erreur _handleConversationUpdated: $e');
+    }
+  }
+
+  /// Gérer la suppression d'une conversation
+  void _handleConversationDeleted(String conversationId) {
+    try {
+      _chatsCache.remove(conversationId);
+      _hiveService.deleteChat(conversationId);
+      _conversationUpdateController.add(_chatsCache.values.toList());
+      print('✅ [ChatListRepository] Conversation supprimée: $conversationId');
+    } catch (e) {
+      print('❌ [ChatListRepository] Erreur _handleConversationDeleted: $e');
     }
   }
 
@@ -336,21 +694,60 @@ class ChatListRepository {
   Future<void> markChatAsRead(String chatId, String userId) async {
     if (_chatsCache.containsKey(chatId)) {
       final chat = _chatsCache[chatId]!;
-      // Mettre à jour les unreadCounts
+
+      print(
+          '🔍 [ChatListRepository] Marquage comme lu - chatId: $chatId, userId: $userId');
+      print(
+          '📊 userMetadata avant: ${chat.userMetadata.map((m) => '${m.userId}:${m.unreadCount}').join(', ')}');
+
+      // Mettre à jour le unreadCount dans userMetadata pour l'utilisateur actuel
+      final updatedUserMetadata = chat.userMetadata.map((meta) {
+        if (meta.userId == userId) {
+          print(
+              '✅ Trouvé userMetadata pour $userId, mise à jour unreadCount de ${meta.unreadCount} à 0');
+          return ParticipantMetadata(
+            userId: meta.userId,
+            unreadCount: 0,
+            lastReadAt: DateTime.now(),
+            isMuted: meta.isMuted,
+            isPinned: meta.isPinned,
+            customName: meta.customName,
+            notificationSettings: meta.notificationSettings,
+            nom: meta.nom,
+            prenom: meta.prenom,
+            avatar: meta.avatar,
+            metadataId: meta.metadataId,
+            sexe: meta.sexe,
+            departement: meta.departement,
+            ministere: meta.ministere,
+          );
+        }
+        return meta;
+      }).toList();
+
+      // Aussi mettre à jour unreadCounts pour compatibilité
+      final updatedUnreadCounts = {...chat.unreadCounts, userId: 0};
+
       final updatedChat = chat.copyWith(
-        unreadCounts: {...chat.unreadCounts, userId: 0},
+        userMetadata: updatedUserMetadata,
+        unreadCounts: updatedUnreadCounts,
       );
+
       _chatsCache[chatId] = updatedChat;
+
+      print(
+          '📊 userMetadata après: ${updatedChat.userMetadata.map((m) => '${m.userId}:${m.unreadCount}').join(', ')}');
 
       // Sauvegarder dans Hive
       await _hiveService.saveChat(updatedChat);
 
       // Notifier les listeners
       _conversationUpdateController.add(_chatsCache.values.toList());
-
-      // Note: Les messages individuels sont marqués comme lus automatiquement
-      // via MessageRepository._handleNewMessage() qui appelle markMessageRead()
-      // pour chaque message non-lu reçu.
+      print(
+          '✅ [ChatListRepository] Conversation $chatId marquée comme lue pour $userId');
+    } else {
+      print(
+          '⚠️ [ChatListRepository] Conversation $chatId introuvable dans le cache');
     }
   }
 
@@ -371,8 +768,9 @@ class ChatListRepository {
     final messageId = data['messageId'] as String?;
     final status = data['status'] as String?;
     final userId = data['userId'] as String?;
+    final conversationId = data['conversationId'] as String?;
 
-    if (messageId == null || status == null || userId == null) {
+    if (messageId == null || status == null) {
       print('❌ Données invalides pour messageStatusChanged: $data');
       return;
     }
@@ -380,9 +778,52 @@ class ChatListRepository {
     print(
         '🔄 [ChatListRepository] Changement de statut reçu: $messageId -> $status pour user $userId');
 
+    // Mettre à jour le lastMessage si c'est le message concerné
+    _updateLastMessageStatus(messageId, status, conversationId);
+
     // Si le statut est "READ", mettre à jour les compteurs non lus
-    if (status == 'READ') {
+    if (status == 'READ' && userId != null) {
       _updateUnreadCountForUser(userId);
+    }
+  }
+
+  /// Mettre à jour le statut du lastMessage dans le cache
+  void _updateLastMessageStatus(
+      String messageId, String status, String? conversationId) {
+    final newStatus = Message.parseMessageStatus(status);
+    int updatedCount = 0;
+
+    // Si on a l'ID de conversation, on cherche directement
+    if (conversationId != null && _chatsCache.containsKey(conversationId)) {
+      final chat = _chatsCache[conversationId]!;
+      if (chat.lastMessage != null && chat.lastMessage!.id == messageId) {
+        final updatedLastMessage =
+            chat.lastMessage!.copyWith(status: newStatus);
+        final updatedChat = chat.copyWith(lastMessage: updatedLastMessage);
+        _chatsCache[conversationId] = updatedChat;
+        updatedCount++;
+        print(
+            '   ✅ LastMessage mis à jour dans conversation $conversationId: $status');
+      }
+    } else {
+      // Sinon, parcourir toutes les conversations
+      for (final chatId in _chatsCache.keys.toList()) {
+        final chat = _chatsCache[chatId]!;
+        if (chat.lastMessage != null && chat.lastMessage!.id == messageId) {
+          final updatedLastMessage =
+              chat.lastMessage!.copyWith(status: newStatus);
+          final updatedChat = chat.copyWith(lastMessage: updatedLastMessage);
+          _chatsCache[chatId] = updatedChat;
+          updatedCount++;
+          print(
+              '   ✅ LastMessage mis à jour dans conversation $chatId: $status');
+        }
+      }
+    }
+
+    if (updatedCount > 0) {
+      print('📨 LastMessage statut mis à jour: $updatedCount conversations');
+      _conversationUpdateController.add(_chatsCache.values.toList());
     }
   }
 

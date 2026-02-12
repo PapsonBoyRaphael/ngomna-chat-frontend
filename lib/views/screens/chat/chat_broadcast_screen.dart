@@ -16,11 +16,13 @@ import 'package:ngomna_chat/core/utils/date_formatter.dart';
 class ChatBroadcastScreen extends StatelessWidget {
   final String broadcastId;
   final String broadcastName;
+  final Map<String, dynamic>? conversationData;
 
   const ChatBroadcastScreen({
     super.key,
     required this.broadcastId,
     this.broadcastName = 'Broadcast',
+    this.conversationData,
   });
 
   @override
@@ -33,7 +35,8 @@ class ChatBroadcastScreen extends StatelessWidget {
                   apiService: ApiService(), storageService: StorageService())),
               AuthRepository(
                   apiService: ApiService(), storageService: StorageService()),
-              broadcastId)
+              broadcastId,
+              conversationData)
             ..loadMessages(),
         ),
         ChangeNotifierProvider(

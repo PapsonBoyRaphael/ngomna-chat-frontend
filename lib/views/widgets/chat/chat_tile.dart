@@ -181,6 +181,9 @@ class ChatTile extends StatelessWidget {
     // Utiliser le getter unreadCount qui retourne seulement le count de l'utilisateur actuel
     final totalUnread = chat.unreadCount;
 
+    print(
+        '🔍 [ChatTile._buildTimeAndBadge] ${chat.displayName}: totalUnread=$totalUnread');
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.end,

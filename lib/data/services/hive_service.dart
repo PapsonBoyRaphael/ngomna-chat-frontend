@@ -124,11 +124,34 @@ class HiveService {
   /// Sauvegarder une conversation
   Future<void> saveChat(Chat chat) async {
     try {
+      print('🔍 [HiveService] Tentative sauvegarde: ${chat.name} (${chat.id})');
+      print('   - Type: ${chat.type}');
+      print('   - Participants: ${chat.participants.length}');
+      print('   - UserMetadata: ${chat.userMetadata.length} entrées');
+
+      // Vérifier les données de présence
+      for (var i = 0; i < chat.userMetadata.length; i++) {
+        final metadata = chat.userMetadata[i];
+        print(
+            '   - Metadata[$i]: userId=${metadata.userId}, presence=${metadata.presence != null ? "OUI (${metadata.presence!.status})" : "NULL"}');
+      }
+
+      print(
+          '   - PresenceStats: ${chat.presenceStats != null ? "OUI (${chat.presenceStats!.onlineCount}/${chat.presenceStats!.totalParticipants})" : "NULL"}');
+
+      // Vérifier les adapters enregistrés
+      print('🔧 [HiveService] Adapters Hive enregistrés:');
+      print('   - UserPresence (20): ${Hive.isAdapterRegistered(20)}');
+      print('   - PresenceStats (21): ${Hive.isAdapterRegistered(21)}');
+
       final box = await Hive.openBox<Chat>(_chatsBox);
+      print('📦 [HiveService] Box ouvert, sauvegarde en cours...');
       await box.put(chat.id, chat);
-      print('💾 Conversation sauvegardée: ${chat.name}');
-    } catch (e) {
+      print('✅ Conversation sauvegardée: ${chat.name}');
+    } catch (e, stackTrace) {
       print('❌ Erreur sauvegarde conversation: $e');
+      print(
+          '📍 StackTrace: ${stackTrace.toString().split('\n').take(5).join('\n')}');
     }
   }
 

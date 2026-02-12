@@ -87,6 +87,7 @@ class AppRoutes {
         return ChatBroadcastScreen(
           broadcastId: args['broadcastId'],
           broadcastName: args['broadcastName'] ?? 'Broadcast',
+          conversationData: args['conversationData'],
         );
       },
       newChat: (context) => const NewChatScreen(),
@@ -100,6 +101,7 @@ class AppRoutes {
           groupId: args['groupId'],
           groupName: args['groupName'],
           groupAvatar: args['groupAvatar'],
+          conversationData: args['conversationData'],
         );
       },
     };

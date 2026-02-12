@@ -27,6 +27,12 @@ import 'package:ngomna_chat/viewmodels/message_viewmodel.dart';
 class AppProviders {
   static bool _initialized = false;
 
+  static void _registerAdapterIfNeeded<T>(TypeAdapter<T> adapter) {
+    if (!Hive.isAdapterRegistered(adapter.typeId)) {
+      Hive.registerAdapter(adapter);
+    }
+  }
+
   /// Liste complète de tous les providers de l'application
   static List<SingleChildWidget> get allProviders => [
         // 🔧 Services (Singletons)
@@ -180,27 +186,44 @@ class AppProviders {
       // Initialiser Hive
       await Hive.initFlutter();
 
-      // Enregistrer les adapters Hive
-      Hive.registerAdapter(ChatAdapter());
-      Hive.registerAdapter(ChatTypeAdapter());
-      Hive.registerAdapter(ParticipantMetadataAdapter());
-      Hive.registerAdapter(NotificationSettingsAdapter());
-      Hive.registerAdapter(LastMessageAdapter());
-      Hive.registerAdapter(ChatSettingsAdapter());
-      Hive.registerAdapter(ChatMetadataAdapter());
-      Hive.registerAdapter(AuditLogEntryAdapter());
-      Hive.registerAdapter(ChatStatsAdapter());
-      Hive.registerAdapter(ChatIntegrationsAdapter());
-      Hive.registerAdapter(MessageAdapter());
-      Hive.registerAdapter(MessageTypeAdapter());
-      Hive.registerAdapter(MessageStatusAdapter());
-      Hive.registerAdapter(MessagePriorityAdapter());
-      Hive.registerAdapter(MessageMetadataAdapter());
-      Hive.registerAdapter(TechnicalMetadataAdapter());
-      Hive.registerAdapter(KafkaMetadataAdapter());
-      Hive.registerAdapter(RedisMetadataAdapter());
-      Hive.registerAdapter(DeliveryMetadataAdapter());
-      Hive.registerAdapter(ContentMetadataAdapter());
+      // ⚠️ IMPORTANT : Enregistrer les adapters dans l'ordre des dépendances
+      // Les types simples/primitifs AVANT les types composites qui les utilisent
+
+      // 1️⃣ Enums et types simples d'abord
+      _registerAdapterIfNeeded(ChatTypeAdapter());
+      _registerAdapterIfNeeded(MessageTypeAdapter());
+      _registerAdapterIfNeeded(MessageStatusAdapter());
+      _registerAdapterIfNeeded(MessagePriorityAdapter());
+
+      // 2️⃣ Types composites de niveau 1
+      // Note: UserPresence et PresenceStats ne sont PAS persistées (données temps réel)
+      _registerAdapterIfNeeded(NotificationSettingsAdapter());
+      _registerAdapterIfNeeded(LastMessageAdapter());
+      _registerAdapterIfNeeded(MessageMetadataAdapter());
+      _registerAdapterIfNeeded(TechnicalMetadataAdapter());
+      _registerAdapterIfNeeded(KafkaMetadataAdapter());
+      _registerAdapterIfNeeded(RedisMetadataAdapter());
+      _registerAdapterIfNeeded(DeliveryMetadataAdapter());
+      _registerAdapterIfNeeded(ContentMetadataAdapter());
+      _registerAdapterIfNeeded(AuditLogEntryAdapter());
+
+      // 3️⃣ ParticipantMetadata (le champ presence n'a pas de @HiveField donc non persisté)
+      _registerAdapterIfNeeded(ParticipantMetadataAdapter());
+
+      // 5️⃣ Types composites de niveau 2
+      _registerAdapterIfNeeded(ChatSettingsAdapter());
+      _registerAdapterIfNeeded(ChatMetadataAdapter());
+      _registerAdapterIfNeeded(ChatStatsAdapter());
+      _registerAdapterIfNeeded(ChatIntegrationsAdapter());
+
+      // 6️⃣ Types principaux (utilisent ParticipantMetadata, PresenceStats, etc.)
+      _registerAdapterIfNeeded(ChatAdapter());
+      _registerAdapterIfNeeded(MessageAdapter());
+
+      // 🔍 Vérification des adapters de présence
+      print('🔧 [AppProviders] Vérification adapters de présence:');
+      print('   - UserPresence (typeId 20): ${Hive.isAdapterRegistered(20)}');
+      print('   - PresenceStats (typeId 21): ${Hive.isAdapterRegistered(21)}');
 
       // Initialiser StorageService avec timeout
       final storageService = StorageService();

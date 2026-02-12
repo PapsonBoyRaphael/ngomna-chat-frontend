@@ -76,12 +76,18 @@ class Chat {
   @HiveField(16)
   final DateTime updatedAt;
 
+  // ⚠️ PAS de @HiveField - données temps réel non persistées
+  final PresenceStats? presenceStats;
+
   // Calculated fields (not stored in Hive)
   int get unreadCount {
     // Récupérer le count pour l'utilisateur courant depuis userMetadata
     final StorageService storageService = StorageService();
     final currentUser = storageService.getUser();
-    if (currentUser == null) return 0;
+    if (currentUser == null) {
+      print('⚠️ [Chat.unreadCount] currentUser est null');
+      return 0;
+    }
 
     // Chercher dans userMetadata l'utilisateur courant
     final currentUserMetadata = userMetadata.firstWhere(
@@ -103,6 +109,8 @@ class Chat {
       ),
     );
 
+    print(
+        '🔍 [Chat.unreadCount] Pour ${displayName}: userId=${currentUser.matricule}, unreadCount=${currentUserMetadata.unreadCount}');
     return currentUserMetadata.unreadCount;
   }
 
@@ -163,6 +171,7 @@ class Chat {
     required this.integrations,
     required this.createdAt,
     required this.updatedAt,
+    this.presenceStats,
   });
 
   factory Chat.fromJson(Map<String, dynamic> json) {
@@ -314,6 +323,10 @@ class Chat {
       integrations: ChatIntegrations.fromJson(json['integrations'] ?? {}),
       createdAt: createdAt,
       updatedAt: _extractDate(json['updatedAt']),
+      presenceStats: json['presenceStats'] != null
+          ? PresenceStats.fromJson(
+              json['presenceStats'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -334,6 +347,7 @@ class Chat {
       integrations: ChatIntegrations(),
       createdAt: now,
       updatedAt: now,
+      presenceStats: null,
     );
   }
 
@@ -369,6 +383,7 @@ class Chat {
       'integrations': integrations.toJson(),
       'createdAt': {'\$date': createdAt.toIso8601String()},
       'updatedAt': {'\$date': updatedAt.toIso8601String()},
+      if (presenceStats != null) 'presenceStats': presenceStats!.toJson(),
     };
   }
 
@@ -403,6 +418,7 @@ class Chat {
     ChatIntegrations? integrations,
     DateTime? createdAt,
     DateTime? updatedAt,
+    PresenceStats? presenceStats,
   }) {
     return Chat(
       id: id ?? this.id,
@@ -422,6 +438,7 @@ class Chat {
       integrations: integrations ?? this.integrations,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      presenceStats: presenceStats ?? this.presenceStats,
     );
   }
 }
@@ -470,6 +487,9 @@ class ParticipantMetadata {
   @HiveField(13)
   final String? ministere; // Ministère de l'utilisateur
 
+  // ⚠️ PAS de @HiveField - données temps réel non persistées
+  final UserPresence? presence; // Données de présence utilisateur
+
   // Propriété calculée pour retrouver le nom complet
   String get name => '$prenom $nom'.trim();
 
@@ -492,11 +512,25 @@ class ParticipantMetadata {
     this.sexe,
     this.departement,
     this.ministere,
+    this.presence,
   });
 
   factory ParticipantMetadata.fromJson(Map<String, dynamic> json) {
+    final nameValue = json['name']?.toString().trim() ?? '';
+    final nameParts = nameValue.isNotEmpty ? nameValue.split(' ') : <String>[];
+    final derivedPrenom = nameParts.isNotEmpty ? nameParts.first : '';
+    final derivedNom =
+        nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
+
+    final rawUserId = json['userId']?.toString() ?? '';
+    final fallbackUserId = json['matricule']?.toString() ?? '';
+    final resolvedUserId = rawUserId.isNotEmpty ? rawUserId : fallbackUserId;
+
+    final rawPrenom = json['prenom']?.toString() ?? '';
+    final rawNom = json['nom']?.toString() ?? '';
+
     return ParticipantMetadata(
-      userId: json['userId']?.toString() ?? '',
+      userId: resolvedUserId,
       unreadCount: json['unreadCount'] as int? ?? 0,
       lastReadAt:
           json['lastReadAt'] != null ? _extractDate(json['lastReadAt']) : null,
@@ -505,14 +539,17 @@ class ParticipantMetadata {
       customName: json['customName']?.toString(),
       notificationSettings:
           NotificationSettings.fromJson(json['notificationSettings'] ?? {}),
-      nom: json['nom']?.toString() ?? '',
-      prenom: json['prenom']?.toString() ?? '',
+      nom: rawNom.isNotEmpty ? rawNom : derivedNom,
+      prenom: rawPrenom.isNotEmpty ? rawPrenom : derivedPrenom,
       avatar: json['avatar']?.toString(),
       metadataId:
           json['_id']?['\$oid']?.toString() ?? json['_id']?.toString() ?? '',
       sexe: json['sexe']?.toString(),
       departement: json['departement']?.toString(),
       ministere: json['ministere']?.toString(),
+      presence: json['presence'] != null
+          ? UserPresence.fromJson(json['presence'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -533,6 +570,133 @@ class ParticipantMetadata {
       'sexe': sexe,
       'departement': departement,
       'ministere': ministere,
+      if (presence != null) 'presence': presence!.toJson(),
+    };
+  }
+
+  /// Crée une copie avec des valeurs modifiées
+  ParticipantMetadata copyWith({
+    String? userId,
+    int? unreadCount,
+    DateTime? lastReadAt,
+    bool? isMuted,
+    bool? isPinned,
+    String? customName,
+    NotificationSettings? notificationSettings,
+    String? nom,
+    String? prenom,
+    String? avatar,
+    String? metadataId,
+    String? sexe,
+    String? departement,
+    String? ministere,
+    UserPresence? presence,
+  }) {
+    return ParticipantMetadata(
+      userId: userId ?? this.userId,
+      unreadCount: unreadCount ?? this.unreadCount,
+      lastReadAt: lastReadAt ?? this.lastReadAt,
+      isMuted: isMuted ?? this.isMuted,
+      isPinned: isPinned ?? this.isPinned,
+      customName: customName ?? this.customName,
+      notificationSettings: notificationSettings ?? this.notificationSettings,
+      nom: nom ?? this.nom,
+      prenom: prenom ?? this.prenom,
+      avatar: avatar ?? this.avatar,
+      metadataId: metadataId ?? this.metadataId,
+      sexe: sexe ?? this.sexe,
+      departement: departement ?? this.departement,
+      ministere: ministere ?? this.ministere,
+      presence: presence ?? this.presence,
+    );
+  }
+}
+
+/// Modèle pour les données de présence utilisateur
+/// ⚠️ Ces données sont temps réel et ne sont PAS persistées dans Hive
+class UserPresence {
+  // ⚠️ PAS de @HiveField - données temps réel non persistées dans Hive
+  final bool isOnline;
+  final String status; // "online", "offline", "idle"
+  final DateTime lastActivity;
+  final DateTime? disconnectedAt;
+
+  UserPresence({
+    required this.isOnline,
+    required this.status,
+    required this.lastActivity,
+    this.disconnectedAt,
+  });
+
+  /// Crée une copie avec des valeurs modifiées
+  UserPresence copyWith({
+    bool? isOnline,
+    String? status,
+    DateTime? lastActivity,
+    DateTime? disconnectedAt,
+  }) {
+    return UserPresence(
+      isOnline: isOnline ?? this.isOnline,
+      status: status ?? this.status,
+      lastActivity: lastActivity ?? this.lastActivity,
+      disconnectedAt: disconnectedAt ?? this.disconnectedAt,
+    );
+  }
+
+  factory UserPresence.fromJson(Map<String, dynamic> json) {
+    return UserPresence(
+      isOnline: json['isOnline'] as bool? ?? false,
+      status: json['status']?.toString() ?? 'offline',
+      lastActivity: json['lastActivity'] != null
+          ? _extractDate(json['lastActivity'])
+          : DateTime.now(),
+      disconnectedAt: json['disconnectedAt'] != null
+          ? _extractDate(json['disconnectedAt'])
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'isOnline': isOnline,
+      'status': status,
+      'lastActivity': lastActivity.toIso8601String(),
+      if (disconnectedAt != null)
+        'disconnectedAt': disconnectedAt!.toIso8601String(),
+    };
+  }
+}
+
+/// Modèle pour les statistiques de présence d'une conversation
+/// ⚠️ Ces données sont temps réel et ne sont PAS persistées dans Hive
+class PresenceStats {
+  final int totalParticipants;
+  final int onlineCount;
+  final int offlineCount;
+  final List<String> onlineParticipants;
+
+  PresenceStats({
+    required this.totalParticipants,
+    required this.onlineCount,
+    required this.offlineCount,
+    required this.onlineParticipants,
+  });
+
+  factory PresenceStats.fromJson(Map<String, dynamic> json) {
+    return PresenceStats(
+      totalParticipants: json['totalParticipants'] as int? ?? 0,
+      onlineCount: json['onlineCount'] as int? ?? 0,
+      offlineCount: json['offlineCount'] as int? ?? 0,
+      onlineParticipants: List<String>.from(json['onlineParticipants'] ?? []),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'totalParticipants': totalParticipants,
+      'onlineCount': onlineCount,
+      'offlineCount': offlineCount,
+      'onlineParticipants': onlineParticipants,
     };
   }
 }
@@ -591,6 +755,9 @@ class LastMessage {
   @HiveField(5)
   final MessageStatus status;
 
+  @HiveField(6)
+  final String id;
+
   LastMessage({
     required this.content,
     required this.type,
@@ -598,10 +765,45 @@ class LastMessage {
     this.senderName,
     required this.timestamp,
     required this.status,
+    this.id = '',
   });
 
-  factory LastMessage.fromJson(Map<String, dynamic> json) {
+  /// Crée une copie avec des valeurs modifiées
+  LastMessage copyWith({
+    String? content,
+    String? type,
+    String? senderId,
+    String? senderName,
+    DateTime? timestamp,
+    MessageStatus? status,
+    String? id,
+  }) {
     return LastMessage(
+      content: content ?? this.content,
+      type: type ?? this.type,
+      senderId: senderId ?? this.senderId,
+      senderName: senderName ?? this.senderName,
+      timestamp: timestamp ?? this.timestamp,
+      status: status ?? this.status,
+      id: id ?? this.id,
+    );
+  }
+
+  factory LastMessage.fromJson(Map<String, dynamic> json) {
+    // Extraire l'id depuis _id.$oid ou _id ou id
+    String messageId = '';
+    if (json['_id'] != null) {
+      if (json['_id'] is Map && json['_id']['\$oid'] != null) {
+        messageId = json['_id']['\$oid'].toString();
+      } else {
+        messageId = json['_id'].toString();
+      }
+    } else if (json['id'] != null) {
+      messageId = json['id'].toString();
+    }
+
+    return LastMessage(
+      id: messageId,
       content: json['content']?.toString() ?? '',
       type: json['type']?.toString() ?? 'TEXT',
       senderId: json['senderId']?.toString() ?? '',
@@ -613,6 +815,7 @@ class LastMessage {
 
   Map<String, dynamic> toJson() {
     return {
+      '_id': {'\$oid': id},
       'content': content,
       'type': type,
       'senderId': senderId,
@@ -933,5 +1136,46 @@ extension ChatHelpers on Chat {
 
   DateTime get time => lastMessageAt;
 
-  bool get isOnline => false; // TODO: Implement based on user status
+  /// Vérifie si l'autre participant est en ligne (pour les conversations personnelles)
+  /// ou si au moins un autre participant est en ligne (pour les groupes)
+  bool get isOnline {
+    final StorageService storageService = StorageService();
+    final currentUserMatricule = storageService.getUser()?.matricule;
+
+    if (type == ChatType.personal) {
+      // Pour une conversation personnelle, vérifier si l'autre participant est en ligne
+      final otherParticipant = userMetadata.firstWhere(
+        (meta) => meta.userId != currentUserMatricule,
+        orElse: () => userMetadata.isNotEmpty
+            ? userMetadata.first
+            : ParticipantMetadata(
+                userId: '',
+                unreadCount: 0,
+                isMuted: false,
+                isPinned: false,
+                notificationSettings: NotificationSettings(
+                    enabled: true, sound: true, vibration: true),
+                nom: '',
+                prenom: '',
+                metadataId: '',
+              ),
+      );
+
+      // Vérifier la présence
+      final isParticipantOnline = otherParticipant.presence?.isOnline ?? false;
+      print(
+          '🟢 [Chat.isOnline] ${displayName}: otherUser=${otherParticipant.userId}, isOnline=$isParticipantOnline');
+      return isParticipantOnline;
+    } else {
+      // Pour les groupes, vérifier si au moins un autre participant est en ligne
+      final onlineCount = presenceStats?.onlineCount ?? 0;
+      // Ne pas compter l'utilisateur courant
+      final othersOnline = userMetadata.any((meta) =>
+          meta.userId != currentUserMatricule &&
+          (meta.presence?.isOnline ?? false));
+      print(
+          '🟢 [Chat.isOnline] Groupe ${displayName}: othersOnline=$othersOnline, statsOnlineCount=$onlineCount');
+      return othersOnline;
+    }
+  }
 }

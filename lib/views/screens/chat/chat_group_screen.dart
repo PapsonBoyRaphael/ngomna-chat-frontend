@@ -15,12 +15,14 @@ class ChatGroupScreen extends StatelessWidget {
   final String groupId;
   final String groupName;
   final String groupAvatar;
+  final Map<String, dynamic>? conversationData;
 
   const ChatGroupScreen({
     super.key,
     required this.groupId,
     required this.groupName,
     required this.groupAvatar,
+    this.conversationData,
   });
 
   @override
@@ -31,6 +33,7 @@ class ChatGroupScreen extends StatelessWidget {
           create: (_) => GroupChatViewModel(
             GroupChatRepository(),
             groupId,
+            conversationData,
           )..loadMessages(),
         ),
         ChangeNotifierProvider(
@@ -70,38 +73,51 @@ class _ChatGroupContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: ChatAppBar(
-        user: User(
-          id: 'group',
-          matricule: 'group', // Utilisation de l'ID comme matricule par défaut
-          nom: groupName.split(' ').first, // Extraction du prénom
-          prenom: groupName.split(' ').last, // Extraction du nom
-          avatarUrl: groupAvatar,
-          isOnline: true, // Les groupes sont toujours "actifs"
-        ),
-        onBack: () => Navigator.pop(context),
-        onCall: () {
-          // TODO: Appel de groupe
-        },
-        onVideoCall: () {
-          // TODO: Appel vidéo de groupe
-        },
-      ),
-      body: Column(
-        children: [
-          Container(height: 1, color: const Color(0xFFE0E0E0)),
-          _buildMessagesList(),
-          Container(height: 1, color: const Color(0xFFE0E0E0)),
-          ChatInput(
-            onSendMessage: (text) {
-              context.read<GroupChatViewModel>().sendMessage(text);
+    return Consumer<GroupChatViewModel>(
+      builder: (context, viewModel, child) {
+        // Récupérer les informations de présence du groupe
+        final onlineCount = viewModel.onlineCount;
+        final totalParticipants = viewModel.totalParticipants;
+
+        return Scaffold(
+          backgroundColor: Colors.white,
+          appBar: ChatAppBar(
+            user: User(
+              id: 'group',
+              matricule: 'group',
+              nom: groupName.split(' ').first,
+              prenom: groupName.split(' ').length > 1
+                  ? groupName.split(' ').sublist(1).join(' ')
+                  : '',
+              avatarUrl: groupAvatar,
+              isOnline: onlineCount > 0, // Au moins un membre en ligne
+            ),
+            isGroup: true,
+            onlineCount: onlineCount,
+            totalParticipants: totalParticipants,
+            onBack: () => Navigator.pop(context),
+            onCall: () {
+              // TODO: Appel de groupe
             },
-            controller: controller.ChatInputStateController(),
+            onVideoCall: () {
+              // TODO: Appel vidéo de groupe
+            },
           ),
-        ],
-      ),
+          body: Column(
+            children: [
+              Container(height: 1, color: const Color(0xFFE0E0E0)),
+              _buildMessagesList(),
+              Container(height: 1, color: const Color(0xFFE0E0E0)),
+              ChatInput(
+                onSendMessage: (text) {
+                  context.read<GroupChatViewModel>().sendMessage(text);
+                },
+                controller: controller.ChatInputStateController(),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

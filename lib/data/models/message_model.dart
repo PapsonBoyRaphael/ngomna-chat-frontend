@@ -231,11 +231,24 @@ class Message {
 
   /// Factory depuis JSON backend
   factory Message.fromJson(Map<String, dynamic> json) {
+    // Extract message ID from various formats
+    String messageId = '';
+    if (json['_id'] != null) {
+      if (json['_id'] is Map<String, dynamic>) {
+        messageId = json['_id']['\$oid']?.toString() ?? '';
+      } else {
+        messageId = json['_id']?.toString() ?? '';
+      }
+    } else if (json['id'] != null) {
+      // Fallback to 'id' if '_id' not found
+      messageId = json['id']?.toString() ?? '';
+    } else if (json['messageId'] != null) {
+      // Fallback to 'messageId' (format du serveur Socket.IO)
+      messageId = json['messageId']?.toString() ?? '';
+    }
+
     return Message(
-      id: (json['_id'] is Map<String, dynamic>
-              ? json['_id']['\$oid']?.toString()
-              : json['_id']?.toString()) ??
-          '',
+      id: messageId,
       temporaryId: json['temporaryId'] as String?,
       conversationId: (json['conversationId'] is Map<String, dynamic>
               ? json['conversationId']['\$oid']?.toString()
@@ -443,7 +456,7 @@ class Message {
     final now = DateTime.now();
     return Message(
       id: '', // Vide pour nouveau message
-      temporaryId: 'temp_${now.millisecondsSinceEpoch}_${senderId}',
+      temporaryId: 'temp_${now.millisecondsSinceEpoch}_$senderId',
       conversationId: conversationId,
       senderId: senderId,
       receiverId:

@@ -29,16 +29,6 @@ class MessageRepository {
 
   bool _isMessageFromMe(Message message) {
     final user = StorageService().getUser();
-    print('🔍 [MessageRepository._isMessageFromMe] Vérification message:');
-    print('   - User trouvé: ${user != null}');
-    if (user != null) {
-      print('   - User matricule: "${user.matricule}"');
-      print('   - User id: "${user.id}"');
-    }
-    print('   - Message senderId: "${message.senderId}"');
-    print('   - Message senderMatricule: "${message.senderMatricule}"');
-    print('   - Message isMe (avant): ${message.isMe}');
-    print('   - Message temporaryId: ${message.temporaryId}');
 
     if (user == null) {
       print('   ❌ Utilisateur non trouvé!');
@@ -46,27 +36,22 @@ class MessageRepository {
     }
 
     // Le backend envoie le matricule comme senderId
-    print(
-        '   → Vérification: senderId "${message.senderId}" == matricule "${user.matricule}" ? ${message.senderId == user.matricule}');
+
     if (message.senderId.isNotEmpty && message.senderId == user.matricule) {
-      print('   ✅ MATCH: senderId == matricule');
       return true;
     }
 
     // Fallback au senderMatricule
-    print(
-        '   → Vérification: senderMatricule "${message.senderMatricule}" == matricule "${user.matricule}" ? ${message.senderMatricule == user.matricule}');
+
     if (message.senderMatricule != null &&
         message.senderMatricule!.isNotEmpty &&
         message.senderMatricule == user.matricule) {
-      print('   ✅ MATCH: senderMatricule == matricule');
       return true;
     }
 
     // Fallback à l'ID utilisateur
 
     if (message.senderId.isNotEmpty && message.senderId == user.id) {
-      print('   ✅ MATCH: senderId == id');
       return true;
     }
 
@@ -98,8 +83,32 @@ class MessageRepository {
 
   /// Configurer les listeners Socket.IO
   void _setupSocketListeners() {
-    // Nouveaux messages reçus
-    _socketService.newMessageStream.listen(_handleNewMessage);
+    // Nouveaux messages reçus depuis ChatStreamManager
+    _socketService.streamManager.messageStream.listen((event) {
+      // Écouter tous les messages (private, group, channel)
+      if (event.context == 'private' ||
+          event.context == 'group' ||
+          event.context == 'channel') {
+        print(
+            '📨 [MessageRepository] Message reçu depuis ChatStreamManager: ${event.messageId}, conv=${event.conversationId}');
+        // Convertir MessageEvent en Message
+        final message = Message(
+          id: event.messageId,
+          conversationId: event.conversationId,
+          senderId: event.senderId,
+          senderName: event.senderName ?? '',
+          content: event.content,
+          type: _mapEventTypeToMessageType(event.type),
+          status: _mapEventStatusToMessageStatus(event.status),
+          createdAt: event.timestamp,
+          receiverId: '', // À définir selon le contexte
+          metadata: event.metadata.isNotEmpty
+              ? MessageMetadata.fromJson(event.metadata)
+              : null,
+        );
+        _handleNewMessage(message);
+      }
+    });
 
     // Confirmation d'envoi
     _socketService.messageSentStream.listen(_handleMessageSent);
@@ -368,14 +377,20 @@ class MessageRepository {
     print(
         '📊 [MessageRepository] Messages groupés par conversation: ${groupedMessages.keys.length} conversations');
 
-    // Marquer les messages non-lus comme delivered
+    // Marquer les messages non-lus comme delivered ET read (si on est dans la conversation)
     for (final message in messages) {
-      if (message.id.isNotEmpty &&
-          !_isMessageFromMe(message) &&
-          message.status.index < MessageStatus.delivered.index) {
+      if (message.id.isNotEmpty && !_isMessageFromMe(message)) {
+        // Marquer comme delivered
+        if (message.status.index < MessageStatus.delivered.index) {
+          print(
+              '📬 [MessageRepository] Marquage message comme delivered lors du chargement: ${message.id}');
+          markMessageDelivered(message.id, message.conversationId);
+        }
+
+        // Marquer comme read (car on charge les messages = on est dans la conversation)
         print(
-            '📬 [MessageRepository] Marquage message comme delivered lors du chargement: ${message.id}');
-        markMessageDelivered(message.id, message.conversationId);
+            '👁️ [MessageRepository] Marquage message comme read lors du chargement: ${message.id}');
+        markMessageRead(message.id, message.conversationId);
       }
     }
 
@@ -398,17 +413,11 @@ class MessageRepository {
         print(
             '🔄 [MessageRepository] Merge des messages pour $convId (local: ${localMsgs.length}, serveur: ${serverMsgs.length})');
         for (final serverMsg in serverMsgs) {
-          print(
-              '🔍 [MessageRepository] Vérification message serveur: id=${serverMsg.id}, temporaryId=${serverMsg.temporaryId}');
           final idx = localMsgs.indexWhere((m) =>
               m.id == serverMsg.id || m.temporaryId == serverMsg.temporaryId);
           if (idx != -1) {
-            print(
-                '🔄 [MessageRepository] Mise à jour message existant: id=${serverMsg.id}');
             localMsgs[idx] = serverMsg; // update status/id
           } else {
-            print(
-                '➕ [MessageRepository] Ajout nouveau message: id=${serverMsg.id}');
             localMsgs.add(serverMsg);
           }
         }
@@ -436,17 +445,9 @@ class MessageRepository {
 
     print(
         '📝 [MessageRepository._updateMessagesCache] AVANT normalisation: ${messages.length} messages');
-    for (var i = 0; i < messages.length; i++) {
-      print(
-          '   - [$i] id=${messages[i].id}, isMe=${messages[i].isMe}, senderId=${messages[i].senderId}');
-    }
 
     print(
         '📝 [MessageRepository._updateMessagesCache] APRÈS normalisation: ${normalizedMessages.length} messages');
-    for (var i = 0; i < normalizedMessages.length; i++) {
-      print(
-          '   - [$i] id=${normalizedMessages[i].id}, isMe=${normalizedMessages[i].isMe}, senderId=${normalizedMessages[i].senderId}');
-    }
 
     _messagesCache[conversationId] = normalizedMessages;
 
@@ -712,4 +713,20 @@ class MessageRepository {
           '⚠️ [MessageRepository] Message non trouvé pour mark as read: $messageId');
     }
   }
+}
+
+/// Mapper le type d'événement vers MessageType
+MessageType _mapEventTypeToMessageType(String eventType) {
+  return MessageType.values.firstWhere(
+    (t) => t.name.toUpperCase() == eventType,
+    orElse: () => MessageType.text,
+  );
+}
+
+/// Mapper le statut d'événement vers MessageStatus
+MessageStatus _mapEventStatusToMessageStatus(String eventStatus) {
+  return MessageStatus.values.firstWhere(
+    (s) => s.name == eventStatus,
+    orElse: () => MessageStatus.sent,
+  );
 }

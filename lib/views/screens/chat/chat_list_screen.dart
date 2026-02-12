@@ -236,6 +236,11 @@ class __ChatListContentState extends State<_ChatListContent> {
         final otherParticipant =
             chat.userMetadata.isNotEmpty ? chat.userMetadata.first : null;
 
+        // Extraire les données de présence
+        final presence = otherParticipant?.presence;
+        final isOnline = presence?.isOnline ?? false;
+        final lastSeen = presence?.disconnectedAt ?? presence?.lastActivity;
+
         Navigator.pushNamed(
           context,
           AppRoutes.chat,
@@ -249,6 +254,8 @@ class __ChatListContentState extends State<_ChatListContent> {
                     nom: otherParticipant.name,
                     prenom: '',
                     avatarUrl: otherParticipant.avatar,
+                    isOnline: isOnline,
+                    lastSeen: lastSeen,
                   )
                 : User(
                     id: '',

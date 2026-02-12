@@ -218,13 +218,14 @@ class LastMessageAdapter extends TypeAdapter<LastMessage> {
       senderName: fields[3] as String?,
       timestamp: fields[4] as DateTime,
       status: fields[5] as MessageStatus,
+      id: fields[6] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, LastMessage obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.content)
       ..writeByte(1)
@@ -236,7 +237,9 @@ class LastMessageAdapter extends TypeAdapter<LastMessage> {
       ..writeByte(4)
       ..write(obj.timestamp)
       ..writeByte(5)
-      ..write(obj.status);
+      ..write(obj.status)
+      ..writeByte(6)
+      ..write(obj.id);
   }
 
   @override

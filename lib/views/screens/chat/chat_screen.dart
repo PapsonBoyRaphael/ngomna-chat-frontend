@@ -64,6 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
       messageRepository: messageRepository,
       conversationId: widget.conversationId,
       authViewModel: _authViewModel,
+      chat: chat, // Passer les données de la conversation
     );
 
     print(

@@ -16,6 +16,8 @@ class SocketService {
   bool _isAuthenticated = false;
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
+  Timer? _heartbeatTimer;
+  static const Duration _heartbeatInterval = Duration(seconds: 30);
   String? _userId;
   String? _matricule;
   String? _accessToken;
@@ -116,6 +118,17 @@ class SocketService {
     print('💬 Demande conversations envoyée');
   }
 
+  /// Demander une seule conversation au serveur
+  Future<void> requestConversation(String conversationId) async {
+    if (!_isAuthenticated) return;
+
+    _socket.emit('getConversation', {
+      'conversationId': conversationId,
+    });
+
+    print('💬 Demande conversation $conversationId envoyée');
+  }
+
   /// Initialiser la connexion Socket.IO
   Future<void> _initializeSocket() async {
     try {
@@ -157,6 +170,9 @@ class SocketService {
       _reconnectAttempts = 0;
       _streamManager.emitConnection(ConnectionState.connected);
 
+      // Démarrer le heartbeat
+      _startHeartbeat();
+
       // Authentifier automatiquement si on a des credentials
       if (_accessToken != null && _userId != null) {
         _authenticateWithToken();
@@ -167,6 +183,7 @@ class SocketService {
       print('❌ Socket.IO déconnecté');
       _isConnected = false;
       _isAuthenticated = false;
+      _stopHeartbeat();
       _streamManager.emitConnection(ConnectionState.disconnected);
       _scheduleReconnect();
     });
@@ -200,6 +217,8 @@ class SocketService {
     // Événements messages privés
     _socket.on('newMessage', (data) {
       print('📩 Nouveau message reçu');
+      print('📋 Raw data keys: ${(data as Map).keys.toList()}');
+      print('📋 Raw data: $data');
       try {
         final messageData = data as Map<String, dynamic>;
         final message = Message.fromJson(messageData);
@@ -279,11 +298,34 @@ class SocketService {
 
     // Événements présence
     _socket.on('presence:update', (data) {
+      print('🟢 [SocketService] Événement presence:update reçu');
+      print('   - Data: $data');
       _presenceUpdateController.add({'type': 'update', 'data': data});
     });
 
+    // Heartbeat acknowledgement - confirme que la connexion est active
+    _socket.on('heartbeat_ack', (_) {
+      print('💓 Heartbeat_ack reçu – connexion active');
+    });
+
     _socket.on('conversation_online_users', (data) {
+      print('🟢 [SocketService] Événement conversation_online_users reçu');
+      print('   - Data: $data');
       _presenceUpdateController.add({'type': 'online_users', 'data': data});
+    });
+
+    // 🆕 Événement user_online - quand un utilisateur se connecte
+    _socket.on('user_online', (data) {
+      print('🟢 [SocketService] Événement user_online reçu');
+      print('   - Data: $data');
+      _presenceUpdateController.add({'type': 'user_online', 'data': data});
+    });
+
+    // 🆕 Événement user_offline - quand un utilisateur se déconnecte
+    _socket.on('user_offline', (data) {
+      print('🔴 [SocketService] Événement user_offline reçu');
+      print('   - Data: $data');
+      _presenceUpdateController.add({'type': 'user_offline', 'data': data});
     });
 
     // Événements frappe (typing)
@@ -508,10 +550,15 @@ class SocketService {
 
     // Événements présence (garder pour compatibilité)
     _socket.on('presence:update', (data) {
+      print('🟢 [SocketService/Legacy] Événement presence:update reçu');
+      print('   - Data: $data');
       _presenceUpdateController.add({'type': 'update', 'data': data});
     });
 
     _socket.on('conversation_online_users', (data) {
+      print(
+          '🟢 [SocketService/Legacy] Événement conversation_online_users reçu');
+      print('   - Data: $data');
       _presenceUpdateController.add({'type': 'online_users', 'data': data});
     });
 
@@ -647,6 +694,31 @@ class SocketService {
     });
   }
 
+  /// Démarre le heartbeat pour maintenir la connexion active
+  void _startHeartbeat() {
+    _stopHeartbeat(); // Arrêter l'ancien timer s'il existe
+
+    _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
+      if (_isConnected && _isAuthenticated) {
+        _socket.emit('heartbeat');
+        print('💓 Heartbeat envoyé au serveur (userId: $_userId)');
+      } else {
+        print(
+            '💓 Heartbeat ignoré - connecté: $_isConnected, authentifié: $_isAuthenticated');
+      }
+    });
+
+    print(
+        '💓 Heartbeat démarré (intervalle: ${_heartbeatInterval.inSeconds}s)');
+  }
+
+  /// Arrête le heartbeat
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    print('💔 Heartbeat arrêté');
+  }
+
   // MARK: - Émissions vers le serveur
 
   /// Envoyer un message
@@ -719,8 +791,14 @@ class SocketService {
 
   /// Marquer message comme lu
   Future<void> markMessageRead(String messageId, String conversationId) async {
-    if (!_isAuthenticated) return;
+    if (!_isAuthenticated) {
+      print(
+          '⚠️ markMessageRead annulé (non authentifié) → messageId=$messageId, conversationId=$conversationId');
+      return;
+    }
 
+    print(
+        '✅ markMessageRead émis → messageId=$messageId, conversationId=$conversationId');
     _socket.emit('markMessageRead', {
       'messageId': messageId,
       'conversationId': conversationId,
@@ -763,6 +841,8 @@ class SocketService {
 
   /// Déconnecter manuellement
   Future<void> disconnect() async {
+    _stopHeartbeat();
+
     if (_reconnectTimer != null && _reconnectTimer!.isActive) {
       _reconnectTimer!.cancel();
     }

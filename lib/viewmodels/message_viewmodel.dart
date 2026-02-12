@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/repositories/message_repository.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'package:ngomna_chat/viewmodels/auth_viewmodel.dart';
@@ -10,6 +11,7 @@ class MessageViewModel extends ChangeNotifier {
   final SocketService _socketService;
   final String _conversationId;
   final AuthViewModel _authViewModel;
+  final Chat? _chat;
 
   List<Message> _messages = [];
   bool _isLoading = false;
@@ -23,11 +25,13 @@ class MessageViewModel extends ChangeNotifier {
     required MessageRepository messageRepository,
     required String conversationId,
     required AuthViewModel authViewModel,
+    Chat? chat,
   })  : _messageRepository = messageRepository,
         _socketService = messageRepository
             .socketService, // On accède au socketService via messageRepository
         _conversationId = conversationId,
-        _authViewModel = authViewModel;
+        _authViewModel = authViewModel,
+        _chat = chat;
 
   StreamSubscription<List<Message>>? _messagesSubscription;
 
@@ -71,14 +75,14 @@ class MessageViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Charger depuis le cache local d'abord
       final messages = await _messageRepository.getMessages(
         _conversationId,
-        forceRefresh: forceRefresh,
+        forceRefresh: false, // Toujours charger depuis le cache d'abord
       );
 
       print(
-          '📦 [MessageViewModel.loadMessages] ${messages.length} messages reçus du repository');
-      for (var i = 0; i < messages.length; i++) {}
+          '📦 [MessageViewModel.loadMessages] ${messages.length} messages reçus du cache');
 
       _messages = messages;
       _error = null;
@@ -91,14 +95,31 @@ class MessageViewModel extends ChangeNotifier {
         _messages = _messages
             .map((msg) => msg.copyWith(isMe: msg.senderId == currentMatricule))
             .toList();
-        for (var i = 0; i < _messages.length; i++) {}
       } else {
         print(
             '⚠️ [MessageViewModel.loadMessages] currentMatricule est NULL, pas de re-normalisation');
       }
-      // Si currentMatricule est null, garder isMe tel quel
 
       notifyListeners();
+
+      // Vérifier si on doit charger depuis le serveur
+      final totalMessagesInMetadata = _chat?.metadata.stats.totalMessages ?? 0;
+      final cachedMessagesCount = messages.length;
+
+      print(
+          '📊 [MessageViewModel] Comparaison: cache=$cachedMessagesCount, metadata.stats.totalMessages=$totalMessagesInMetadata');
+
+      if (cachedMessagesCount != totalMessagesInMetadata || forceRefresh) {
+        print(
+            '🌐 [MessageViewModel] Chargement depuis le serveur (différence détectée ou forceRefresh)');
+        await _messageRepository.getMessages(
+          _conversationId,
+          forceRefresh: true,
+        );
+      } else {
+        print(
+            '✅ [MessageViewModel] Cache à jour, pas de chargement serveur nécessaire');
+      }
 
       print('✅ [MessageViewModel] ${_messages.length} messages chargés');
     } catch (e) {
