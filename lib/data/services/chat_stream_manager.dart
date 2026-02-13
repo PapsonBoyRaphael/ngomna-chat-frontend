@@ -67,12 +67,14 @@ class MessageStatusEvent {
   final String userId;
   final String status; // "delivered", "read"
   final DateTime timestamp;
+  final String? conversationId; // ID de la conversation (optionnel)
 
   MessageStatusEvent({
     required this.messageId,
     required this.userId,
     required this.status,
     required this.timestamp,
+    this.conversationId,
   });
 
   factory MessageStatusEvent.fromJson(Map<String, dynamic> json) {
@@ -82,6 +84,7 @@ class MessageStatusEvent {
       status: json['status'] ?? '',
       timestamp:
           DateTime.parse(json['timestamp'] ?? DateTime.now().toIso8601String()),
+      conversationId: json['conversationId'] as String?,
     );
   }
 }

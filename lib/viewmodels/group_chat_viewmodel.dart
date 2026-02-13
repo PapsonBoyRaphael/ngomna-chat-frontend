@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/group_message_model.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
@@ -13,6 +14,9 @@ class GroupChatViewModel extends ChangeNotifier {
   bool _isSending = false;
   String? _error;
 
+  // Subscription pour les mises à jour en temps réel
+  StreamSubscription<List<GroupMessage>>? _messagesSubscription;
+
   List<GroupMessage> get messages => _messages;
   bool get isLoading => _isLoading;
   bool get isSending => _isSending;
@@ -27,10 +31,60 @@ class GroupChatViewModel extends ChangeNotifier {
   /// Nombre total de participants
   int get totalParticipants => _chat?.participants.length ?? 0;
 
+  /// ID du créateur du groupe
+  String? get createdById => _chat?.createdBy;
+
+  /// Nom du créateur du groupe
+  String get creatorName {
+    if (_chat == null) return 'Quelqu\'un';
+
+    // Chercher le créateur dans les participants metadata
+    final creatorId = _chat!.createdBy;
+    final creatorMetadata =
+        _chat!.userMetadata.cast<ParticipantMetadata?>().firstWhere(
+              (meta) =>
+                  meta?.userId == creatorId || meta?.metadataId == creatorId,
+              orElse: () => null,
+            );
+
+    if (creatorMetadata != null) {
+      final fullName = creatorMetadata.name;
+      return fullName.isNotEmpty ? fullName : 'Le créateur';
+    }
+
+    return 'Le créateur';
+  }
+
+  /// Date de création du groupe
+  DateTime? get createdAt => _chat?.createdAt;
+
   GroupChatViewModel(
       this._repository, this.groupId, Map<String, dynamic>? conversationData)
       : _chat =
             conversationData != null ? Chat.fromJson(conversationData) : null;
+
+  /// Initialiser le ViewModel (appelé après construction)
+  Future<void> init() async {
+    print('🚀 [GroupChatViewModel] init() pour groupe $groupId');
+
+    // Charger les messages initiaux
+    await loadMessages();
+
+    // 🟢 NOUVEAU: Écouter les mises à jour en temps réel
+    _messagesSubscription = _repository.watchGroupMessages(groupId).listen(
+      (messages) {
+        print(
+            '📨 [GroupChatViewModel] Mises à jour temps réel: ${messages.length} messages');
+        _messages = messages;
+        notifyListeners(); // ← Notifie l'UI de rafraîchir
+      },
+      onError: (error) {
+        print('❌ [GroupChatViewModel] Erreur dans le stream: $error');
+        _error = 'Erreur de synchronisation';
+        notifyListeners();
+      },
+    );
+  }
 
   Future<void> loadMessages() async {
     _isLoading = true;
@@ -58,6 +112,7 @@ class GroupChatViewModel extends ChangeNotifier {
       }
     } catch (e) {
       _error = e.toString();
+      print('❌ [GroupChatViewModel] Erreur loadMessages: $e');
     }
 
     _isLoading = false;
@@ -76,9 +131,17 @@ class GroupChatViewModel extends ChangeNotifier {
       _error = null;
     } catch (e) {
       _error = e.toString();
+      print('❌ [GroupChatViewModel] Erreur sendMessage: $e');
     }
 
     _isSending = false;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    print('🧹 [GroupChatViewModel] dispose() - fermeture des subscriptions');
+    _messagesSubscription?.cancel();
+    super.dispose();
   }
 }

@@ -701,7 +701,7 @@ class SocketService {
     _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
       if (_isConnected && _isAuthenticated) {
         _socket.emit('heartbeat');
-        print('💓 Heartbeat envoyé au serveur (userId: $_userId)');
+        print('💓 Heartbeat envoyé au serveur (matricule: $_matricule)');
       } else {
         print(
             '💓 Heartbeat ignoré - connecté: $_isConnected, authentifié: $_isAuthenticated');
@@ -750,16 +750,29 @@ class SocketService {
   /// Récupérer les messages d'une conversation
   Future<void> getMessages(String conversationId,
       {int page = 1, int limit = 50}) async {
+    print(
+        '🔍 [SocketService] getMessages appelé: conversationId=$conversationId, isConnected=$_isConnected, isAuthenticated=$_isAuthenticated');
+
     // Temporairement désactivé pour test
     // if (!_isAuthenticated) {
     //   print(
     //       '❌ [SocketService] getMessages: Socket non authentifié, impossible d\'émettre');
     //   return;
     // }
+
+    // Si pas connecté, attendre la reconnexion (max 10 secondes)
     if (!_isConnected) {
-      print(
-          '❌ [SocketService] getMessages: Socket non connecté, impossible d\'émettre');
-      return;
+      print('⏳ [SocketService] Socket non connecté, attente de reconnexion...');
+      try {
+        await _waitForConnection(maxRetries: 20); // 20 * 500ms = 10 secondes
+        print('✅ [SocketService] Socket reconnecté, envoi de getMessages');
+      } catch (e) {
+        print('❌ [SocketService] Timeout reconnexion: $e');
+        print(
+            '   - État socket: connected=$_isConnected, authenticated=$_isAuthenticated');
+        print('   - Matricule: $_matricule');
+        return;
+      }
     }
 
     _socket.emit('getMessages', {

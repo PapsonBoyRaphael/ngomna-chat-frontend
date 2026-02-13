@@ -84,25 +84,11 @@ class ChatTile extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 26,
-          backgroundColor: const Color(0xFFEDEDED),
-          child: chat.type == ChatType.broadcast
-              ? Image.asset(
-                  (chat.avatarUrl != null && chat.avatarUrl!.isNotEmpty)
-                      ? chat.avatarUrl!
-                      : 'assets/avatars/group.png',
-                  width: 40,
-                  height: 40,
-                )
-              : null,
-          backgroundImage: chat.type != ChatType.broadcast
-              ? AssetImage(
-                  (chat.avatarUrl != null && chat.avatarUrl!.isNotEmpty)
-                      ? chat.avatarUrl!
-                      : 'assets/avatars/default_avatar.png',
-                )
-              : null,
+          backgroundColor: _getAvatarBackgroundColor(),
+          child: _buildAvatarChild(),
+          backgroundImage: _buildAvatarImage(),
         ),
-        if (chat.isOnline)
+        if (chat.isOnline && chat.type == ChatType.personal)
           Positioned(
             bottom: 2,
             right: 2,
@@ -118,6 +104,56 @@ class ChatTile extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  Color _getAvatarBackgroundColor() {
+    switch (chat.type) {
+      case ChatType.broadcast:
+        return Colors.transparent;
+      case ChatType.group:
+        return const Color(0xFFEDEDED);
+      case ChatType.personal:
+        return const Color(0xFFEDEDED);
+      default:
+        return const Color(0xFFEDEDED);
+    }
+  }
+
+  Widget? _buildAvatarChild() {
+    switch (chat.type) {
+      case ChatType.broadcast:
+        return Image.asset(
+          (chat.avatarUrl != null && chat.avatarUrl!.isNotEmpty)
+              ? chat.avatarUrl!
+              : 'assets/icons/broadcast.png',
+          width: 40,
+          height: 40,
+        );
+      case ChatType.group:
+      case ChatType.personal:
+      default:
+        return null;
+    }
+  }
+
+  ImageProvider? _buildAvatarImage() {
+    switch (chat.type) {
+      case ChatType.broadcast:
+        return null;
+      case ChatType.group:
+        return AssetImage(
+          (chat.avatarUrl != null && chat.avatarUrl!.isNotEmpty)
+              ? chat.avatarUrl!
+              : 'assets/avatars/group.png',
+        );
+      case ChatType.personal:
+      default:
+        return AssetImage(
+          (chat.avatarUrl != null && chat.avatarUrl!.isNotEmpty)
+              ? chat.avatarUrl!
+              : 'assets/avatars/default_avatar.png',
+        );
+    }
   }
 
   Widget _buildContent() {
@@ -148,7 +184,7 @@ class ChatTile extends StatelessWidget {
               ],
               Expanded(
                 child: Text(
-                  (chat.lastMessage?.content ?? '').replaceAll('\n', ' '),
+                  _getLastMessageText(),
                   maxLines: 1,
                   style: TextStyle(
                     fontSize: 16,
@@ -226,5 +262,25 @@ class ChatTile extends StatelessWidget {
 
     return message.senderId == currentUser.matricule ||
         message.senderId == currentUser.id;
+  }
+
+  /// Retourne le texte du dernier message ou un texte par défaut
+  String _getLastMessageText() {
+    final content = chat.lastMessage?.content;
+
+    // Si null, vide ou undefined, retourner un message par défaut
+    if (content == null || content.trim().isEmpty) {
+      // Adapter le message selon le type de conversation
+      if (chat.type == ChatType.group) {
+        return 'Nouveau groupe créé';
+      } else if (chat.type == ChatType.broadcast) {
+        return 'Nouvelle liste de diffusion';
+      } else {
+        return 'Nouvelle conversation';
+      }
+    }
+
+    // Remplacer les sauts de ligne par des espaces
+    return content.replaceAll('\n', ' ');
   }
 }

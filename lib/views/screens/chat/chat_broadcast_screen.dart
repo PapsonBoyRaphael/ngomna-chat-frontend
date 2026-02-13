@@ -13,7 +13,7 @@ import 'package:ngomna_chat/controllers/chat_input_controller.dart'
     as controller;
 import 'package:ngomna_chat/core/utils/date_formatter.dart';
 
-class ChatBroadcastScreen extends StatelessWidget {
+class ChatBroadcastScreen extends StatefulWidget {
   final String broadcastId;
   final String broadcastName;
   final Map<String, dynamic>? conversationData;
@@ -26,19 +26,48 @@ class ChatBroadcastScreen extends StatelessWidget {
   });
 
   @override
+  State<ChatBroadcastScreen> createState() => _ChatBroadcastScreenState();
+}
+
+class _ChatBroadcastScreenState extends State<ChatBroadcastScreen> {
+  late BroadcastViewModel _viewModel;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Créer le ViewModel
+    _viewModel = BroadcastViewModel(
+      BroadcastRepository(
+        AuthRepository(
+          apiService: ApiService(),
+          storageService: StorageService(),
+        ),
+      ),
+      AuthRepository(
+        apiService: ApiService(),
+        storageService: StorageService(),
+      ),
+      widget.broadcastId,
+      widget.conversationData,
+    );
+
+    // 🟢 IMPORTANT: Appeler init() pour écouter les changements en temps réel
+    _viewModel.init();
+  }
+
+  @override
+  void dispose() {
+    print('🧹 [ChatBroadcastScreen] dispose()');
+    _viewModel.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) => BroadcastViewModel(
-              BroadcastRepository(AuthRepository(
-                  apiService: ApiService(), storageService: StorageService())),
-              AuthRepository(
-                  apiService: ApiService(), storageService: StorageService()),
-              broadcastId,
-              conversationData)
-            ..loadMessages(),
-        ),
+        ChangeNotifierProvider<BroadcastViewModel>.value(value: _viewModel),
         ChangeNotifierProvider(
           create: (_) => controller.ChatInputStateController(),
         ),
@@ -54,7 +83,7 @@ class ChatBroadcastScreen extends StatelessWidget {
                   .read<controller.ChatInputStateController>()
                   .closeAttachMenu();
             },
-            child: _ChatBroadcastContent(broadcastName: broadcastName),
+            child: _ChatBroadcastContent(broadcastName: widget.broadcastName),
           );
         },
       ),

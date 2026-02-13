@@ -6,6 +6,7 @@ import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'package:ngomna_chat/data/services/hive_service.dart';
 import 'package:ngomna_chat/data/services/storage_service.dart';
 import 'package:ngomna_chat/data/repositories/auth_repository.dart';
+import 'package:ngomna_chat/data/services/chat_stream_manager.dart';
 
 class ChatListRepository {
   static ChatListRepository? _instance;
@@ -91,12 +92,14 @@ class ChatListRepository {
     // Confirmations d'envoi de messages
     _socketService.messageSentStream.listen(_handleMessageSent);
 
-    // Changements de statut des messages (pour mettre à jour les compteurs non lus)
-    _socketService.messageStatusChangedStream
-        .listen(_handleMessageStatusChanged);
+    // Changements de statut des messages via ChatStreamManager (nouveau système)
+    // Ceci inclut les statuts DELIVERED et READ
+    _socketService.streamManager.messageStatusStream
+        .listen(_handleMessageStatusChangedFromStream);
+    print(
+        '👂 [ChatListRepository] Listener messageStatusStream (ChatStreamManager) configuré');
 
-    // Messages marqués comme lus (pour mettre à jour les compteurs non lus)
-    _socketService.messageReadStream.listen(_handleMessageRead);
+    // Note: messageReadStream n'est plus utilisé - les événements READ passent maintenant par messageStatusStream
 
     // Conversations mises à jour depuis le serveur
     _socketService.conversationUpdateStream.listen(_handleConversationsLoaded);
@@ -756,7 +759,28 @@ class ChatListRepository {
     _conversationUpdateController.close();
   }
 
-  /// Gérer les changements de statut des messages
+  /// Gérer les changements de statut depuis ChatStreamManager (MessageStatusEvent)
+  void _handleMessageStatusChangedFromStream(MessageStatusEvent event) {
+    // Vérifier que l'utilisateur est authentifié avant de traiter l'événement
+    if (!_socketService.isAuthenticated) {
+      print(
+          '⚠️ [ChatListRepository] Événement messageStatusChanged ignoré - utilisateur non authentifié');
+      return;
+    }
+
+    print(
+        '🔄 [ChatListRepository] Changement de statut via stream: ${event.messageId} -> ${event.status}');
+
+    // Mettre à jour le lastMessage si c'est le message concerné
+    _updateLastMessageStatus(event.messageId, event.status, null);
+
+    // Si le statut est "READ", mettre à jour les compteurs non lus
+    if (event.status.toUpperCase() == 'READ' && event.userId.isNotEmpty) {
+      _updateUnreadCountForUser(event.userId);
+    }
+  }
+
+  /// Gérer les changements de statut des messages (ancien format Map - conservé pour compatibilité)
   void _handleMessageStatusChanged(Map<String, dynamic> data) {
     // Vérifier que l'utilisateur est authentifié avant de traiter l'événement
     if (!_socketService.isAuthenticated) {
@@ -790,12 +814,22 @@ class ChatListRepository {
   /// Mettre à jour le statut du lastMessage dans le cache
   void _updateLastMessageStatus(
       String messageId, String status, String? conversationId) {
+    print(
+        '🔍 [_updateLastMessageStatus] Début - messageId: $messageId, status: $status, conversationId: $conversationId');
+    print(
+        '🔍 [_updateLastMessageStatus] Cache actuel: ${_chatsCache.length} conversations');
+
     final newStatus = Message.parseMessageStatus(status);
     int updatedCount = 0;
 
     // Si on a l'ID de conversation, on cherche directement
     if (conversationId != null && _chatsCache.containsKey(conversationId)) {
       final chat = _chatsCache[conversationId]!;
+      print(
+          '🔍 [_updateLastMessageStatus] Conversation trouvée: ${chat.displayName}');
+      print(
+          '🔍 [_updateLastMessageStatus] LastMessage ID: ${chat.lastMessage?.id}, Cherché: $messageId');
+
       if (chat.lastMessage != null && chat.lastMessage!.id == messageId) {
         final updatedLastMessage =
             chat.lastMessage!.copyWith(status: newStatus);
@@ -807,16 +841,22 @@ class ChatListRepository {
       }
     } else {
       // Sinon, parcourir toutes les conversations
+      print(
+          '🔍 [_updateLastMessageStatus] Parcours de toutes les conversations...');
       for (final chatId in _chatsCache.keys.toList()) {
         final chat = _chatsCache[chatId]!;
-        if (chat.lastMessage != null && chat.lastMessage!.id == messageId) {
-          final updatedLastMessage =
-              chat.lastMessage!.copyWith(status: newStatus);
-          final updatedChat = chat.copyWith(lastMessage: updatedLastMessage);
-          _chatsCache[chatId] = updatedChat;
-          updatedCount++;
+        if (chat.lastMessage != null) {
           print(
-              '   ✅ LastMessage mis à jour dans conversation $chatId: $status');
+              '   - ${chat.displayName}: lastMessage.id=${chat.lastMessage!.id}');
+          if (chat.lastMessage!.id == messageId) {
+            final updatedLastMessage =
+                chat.lastMessage!.copyWith(status: newStatus);
+            final updatedChat = chat.copyWith(lastMessage: updatedLastMessage);
+            _chatsCache[chatId] = updatedChat;
+            updatedCount++;
+            print(
+                '   ✅ LastMessage mis à jour dans conversation $chatId: $status');
+          }
         }
       }
     }
@@ -824,6 +864,9 @@ class ChatListRepository {
     if (updatedCount > 0) {
       print('📨 LastMessage statut mis à jour: $updatedCount conversations');
       _conversationUpdateController.add(_chatsCache.values.toList());
+    } else {
+      print(
+          '⚠️ [_updateLastMessageStatus] Aucune conversation mise à jour pour le message $messageId');
     }
   }
 

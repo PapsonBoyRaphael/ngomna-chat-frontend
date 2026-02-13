@@ -119,9 +119,14 @@ class MessageRepository {
     // Messages chargés depuis le serveur
     _socketService.messagesLoadedStream.listen(_handleMessagesLoaded);
 
-    // Changements de statut des messages
-    _socketService.messageStatusChangedStream
-        .listen(_handleMessageStatusChanged);
+    // Changements de statut des messages (via ChatStreamManager - NOUVEAU)
+    print(
+        '👂 [MessageRepository] Listener messageStatusStream (ChatStreamManager) configuré');
+    _socketService.streamManager.messageStatusStream.listen((statusEvent) {
+      print(
+          '🔔 [MessageRepository] Statut message reçu: ${statusEvent.messageId} -> ${statusEvent.status}');
+      _handleMessageStatusFromStream(statusEvent);
+    });
 
     // Messages marqués comme lus
     _socketService.messageReadStream.listen(_handleMessageRead);
@@ -611,25 +616,27 @@ class MessageRepository {
     _typingController.close();
   }
 
-  /// Gérer les changements de statut des messages
-  void _handleMessageStatusChanged(Map<String, dynamic> data) {
-    final messageId = data['messageId'] as String?;
-    final status = data['status'] as String?;
+  /// Gérer les changements de statut des messages via le nouveau ChatStreamManager
+  void _handleMessageStatusFromStream(dynamic statusEvent) {
+    final messageId = statusEvent.messageId as String?;
+    final status = statusEvent.status as String?;
 
     if (messageId == null || status == null) {
-      print('❌ Données invalides pour messageStatusChanged: $data');
+      print(
+          '❌ [MessageRepository] Données invalides pour statusEvent: $statusEvent');
       return;
     }
 
-    print('🔄 [MessageRepository] Changement de statut: $messageId -> $status');
+    print(
+        '🔄 [MessageRepository] Changement de statut via stream: $messageId -> $status');
 
     // Convertir le statut string en enum
     final messageStatus = Message.parseMessageStatus(status);
 
     // Trouver et mettre à jour le message dans toutes les conversations
     bool messageFound = false;
-    for (final conversationId in _messagesCache.keys) {
-      final messages = _messagesCache[conversationId]!;
+    for (final convId in _messagesCache.keys) {
+      final messages = _messagesCache[convId]!;
       final index = messages.indexWhere((msg) => msg.id == messageId);
 
       if (index != -1) {
@@ -640,14 +647,22 @@ class MessageRepository {
         messageFound = true;
 
         print(
-            '✅ [MessageRepository] Statut mis à jour: ${oldMessage.status} -> ${updatedMessage.status}');
+            '✅ [MessageRepository] Statut mis à jour: ${oldMessage.status} -> ${updatedMessage.status} pour messageId=$messageId');
+        print('   - Conversation: $convId');
+        print('   - Sauvegarde Hive en cours...');
 
         // Sauvegarder dans Hive
         _hiveService.saveMessages(messages);
 
         // Notifier les listeners de la conversation
-        if (_messageStreams.containsKey(conversationId)) {
-          _messageStreams[conversationId]!.add(messages);
+        if (_messageStreams.containsKey(convId)) {
+          print('   - Notification du stream pour $convId');
+          _messageStreams[convId]!.add(messages);
+        } else {
+          print('   ⚠️ Pas de stream pour $convId, création du stream...');
+          // Créer le stream s'il n'existe pas
+          _messageStreams[convId] = StreamController<List<Message>>.broadcast();
+          _messageStreams[convId]!.add(messages);
         }
 
         break; // On suppose qu'un message n'est que dans une conversation
@@ -657,8 +672,11 @@ class MessageRepository {
     if (!messageFound) {
       print(
           '⚠️ [MessageRepository] Message non trouvé dans le cache: $messageId');
+      print('   - Conversations en cache: ${_messagesCache.keys.toList()}');
     }
   }
+
+  /// Gérer les changements de statut des messages (legacy - ancienne méthode)
 
   /// Gérer les messages marqués comme lus
   void _handleMessageRead(Map<String, dynamic> data) {

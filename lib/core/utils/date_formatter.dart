@@ -55,13 +55,17 @@ class LiveDateFormatter {
   static String formatForChatList(DateTime? date) {
     if (date == null) return '';
 
+    // Convertir en heure locale si la date est en UTC
+    final localDate = date.isUtc ? date.toLocal() : date;
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final messageDate = DateTime(date.year, date.month, date.day);
+    final messageDate =
+        DateTime(localDate.year, localDate.month, localDate.day);
 
     // AUJOURD'HUI → Heure
     if (messageDate == today) {
-      return DateFormat('HH:mm').format(date);
+      return DateFormat('HH:mm').format(localDate);
     }
 
     // HIER → "Hier"
@@ -71,13 +75,13 @@ class LiveDateFormatter {
 
     // CETTE SEMAINE → Jour abrégé
     const daysShort = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-    final weekAgo = today.subtract(Duration(days: 7));
+    final weekAgo = today.subtract(const Duration(days: 7));
     if (messageDate.isAfter(weekAgo)) {
-      return daysShort[date.weekday % 7];
+      return daysShort[localDate.weekday % 7];
     }
 
     // PLUS VIEUX → Date complète
-    return DateFormat('dd/MM/yyyy').format(date);
+    return DateFormat('dd/MM/yyyy').format(localDate);
   }
 }
 
@@ -110,8 +114,11 @@ class DateFormatter {
   static String formatMessageDate(DateTime? date) {
     if (date == null) return '';
 
+    // Convertir en heure locale si la date est en UTC
+    final localDate = date.isUtc ? date.toLocal() : date;
+
     final now = DateTime.now();
-    final difference = now.difference(date);
+    final difference = now.difference(localDate);
 
     // Si la date est très récente (< 1 seconde), c'est un message à l'instant
     // Afficher l'heure actuelle
@@ -121,14 +128,14 @@ class DateFormatter {
 
     // Moins de 24 heures : afficher l'heure
     if (difference.inHours < 24) {
-      return DateFormat('HH:mm').format(date);
+      return DateFormat('HH:mm').format(localDate);
     }
 
     // Hier
     final yesterday = DateTime(now.year, now.month, now.day - 1);
-    if (date.year == yesterday.year &&
-        date.month == yesterday.month &&
-        date.day == yesterday.day) {
+    if (localDate.year == yesterday.year &&
+        localDate.month == yesterday.month &&
+        localDate.day == yesterday.day) {
       return 'Hier';
     }
 
@@ -136,13 +143,13 @@ class DateFormatter {
     final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
     final endOfWeek = startOfWeek.add(const Duration(days: 6));
 
-    if (date.isAfter(startOfWeek.subtract(const Duration(days: 1))) &&
-        date.isBefore(endOfWeek.add(const Duration(days: 1)))) {
-      return _dayNamesShort[date.weekday % 7];
+    if (localDate.isAfter(startOfWeek.subtract(const Duration(days: 1))) &&
+        localDate.isBefore(endOfWeek.add(const Duration(days: 1)))) {
+      return _dayNamesShort[localDate.weekday % 7];
     }
 
     // Plus ancien : date complète
-    return DateFormat('dd/MM/yyyy').format(date);
+    return DateFormat('dd/MM/yyyy').format(localDate);
   }
 
   /// Formate une date pour les séparateurs dans les conversations :
@@ -153,8 +160,11 @@ class DateFormatter {
   static String formatDateSeparator(DateTime? date) {
     if (date == null) return '';
 
+    // Convertir en heure locale si la date est en UTC
+    final localDate = date.isUtc ? date.toLocal() : date;
+
     final now = DateTime.now();
-    final difference = now.difference(date);
+    final difference = now.difference(localDate);
 
     // Si la date est très récente (< 1 seconde), c'est probablement une date invalide
     if (difference.inSeconds < 1) {
@@ -165,7 +175,8 @@ class DateFormatter {
 
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
-    final messageDate = DateTime(date.year, date.month, date.day);
+    final messageDate =
+        DateTime(localDate.year, localDate.month, localDate.day);
 
     if (messageDate == today) {
       return 'Aujourd\'hui';
@@ -177,21 +188,24 @@ class DateFormatter {
     final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
     final endOfWeek = startOfWeek.add(const Duration(days: 6));
 
-    if (date.isAfter(startOfWeek.subtract(const Duration(days: 1))) &&
-        date.isBefore(endOfWeek.add(const Duration(days: 1)))) {
-      return _dayNames[date.weekday % 7];
+    if (localDate.isAfter(startOfWeek.subtract(const Duration(days: 1))) &&
+        localDate.isBefore(endOfWeek.add(const Duration(days: 1)))) {
+      return _dayNames[localDate.weekday % 7];
     }
 
     // Plus ancien : date avec mois abrégé
-    return DateFormat('d MMM yyyy', 'fr_FR').format(date);
+    return DateFormat('d MMM yyyy', 'fr_FR').format(localDate);
   }
 
   /// Version alternative pour les dates relatives (utile pour debug)
   static String formatRelativeDate(DateTime? date) {
     if (date == null) return '';
 
+    // Convertir en heure locale si la date est en UTC
+    final localDate = date.isUtc ? date.toLocal() : date;
+
     final now = DateTime.now();
-    final difference = now.difference(date);
+    final difference = now.difference(localDate);
 
     // Si la date est très récente (< 1 seconde), c'est probablement une date invalide
     if (difference.inSeconds < 1) {
@@ -207,7 +221,7 @@ class DateFormatter {
     } else if (difference.inDays < 7) {
       return 'Il y a ${difference.inDays} jours';
     } else {
-      return DateFormat('dd/MM/yyyy').format(date);
+      return DateFormat('dd/MM/yyyy').format(localDate);
     }
   }
 }

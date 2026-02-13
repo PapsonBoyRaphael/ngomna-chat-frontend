@@ -21,6 +21,9 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// Nombre total de participants (pour les groupes)
   final int? totalParticipants;
 
+  /// Indique si c'est une diffusion (broadcast)
+  final bool isBroadcast;
+
   const ChatAppBar({
     super.key,
     required this.user,
@@ -34,6 +37,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.isGroup = false,
     this.onlineCount,
     this.totalParticipants,
+    this.isBroadcast = false,
   });
 
   @override
@@ -43,8 +47,11 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   String _formatLastSeen(DateTime? lastSeen) {
     if (lastSeen == null) return 'Hors ligne';
 
+    // Convertir en heure locale si la date est en UTC
+    final localLastSeen = lastSeen.isUtc ? lastSeen.toLocal() : lastSeen;
+
     final now = DateTime.now();
-    final difference = now.difference(lastSeen);
+    final difference = now.difference(localLastSeen);
 
     if (difference.inMinutes < 1) {
       return 'À l\'instant';
@@ -53,11 +60,11 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     } else if (difference.inHours < 24) {
       return 'Vu il y a ${difference.inHours}h';
     } else if (difference.inDays == 1) {
-      return 'Vu hier à ${DateFormat.Hm().format(lastSeen)}';
+      return 'Vu hier à ${DateFormat.Hm().format(localLastSeen)}';
     } else if (difference.inDays < 7) {
-      return 'Vu ${DateFormat.EEEE().format(lastSeen)} à ${DateFormat.Hm().format(lastSeen)}';
+      return 'Vu ${DateFormat.EEEE().format(localLastSeen)} à ${DateFormat.Hm().format(localLastSeen)}';
     } else {
-      return 'Vu le ${DateFormat.yMMMd().format(lastSeen)}';
+      return 'Vu le ${DateFormat.yMMMd().format(localLastSeen)}';
     }
   }
 
@@ -146,7 +153,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
                 : 'assets/avatars/default_avatar.png',
           ),
         ),
-        if (user.isOnline)
+        if (user.isOnline && !isGroup && !isBroadcast)
           Positioned(
             bottom: 1,
             right: 1,

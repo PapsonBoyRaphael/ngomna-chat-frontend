@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
@@ -16,6 +17,9 @@ class BroadcastViewModel extends ChangeNotifier {
   bool _isSending = false;
   String? _error;
 
+  // Subscription pour les mises à jour en temps réel
+  StreamSubscription<List<Message>>? _messagesSubscription;
+
   List<Message> get messages => _messages;
   List<String> get recipients => _recipients;
   bool get isLoading => _isLoading;
@@ -26,6 +30,30 @@ class BroadcastViewModel extends ChangeNotifier {
       Map<String, dynamic>? conversationData)
       : _chat =
             conversationData != null ? Chat.fromJson(conversationData) : null;
+
+  /// Initialiser le ViewModel (appelé après construction)
+  Future<void> init() async {
+    print('🚀 [BroadcastViewModel] init() pour broadcast $broadcastId');
+
+    // Charger les messages initiaux
+    await loadMessages();
+
+    // 🟢 NOUVEAU: Écouter les mises à jour en temps réel
+    _messagesSubscription =
+        _repository.watchBroadcastMessages(broadcastId).listen(
+      (messages) {
+        print(
+            '📨 [BroadcastViewModel] Mises à jour temps réel: ${messages.length} messages');
+        _messages = messages;
+        notifyListeners(); // ← Notifie l'UI de rafraîchir
+      },
+      onError: (error) {
+        print('❌ [BroadcastViewModel] Erreur dans le stream: $error');
+        _error = 'Erreur de synchronisation';
+        notifyListeners();
+      },
+    );
+  }
 
   Future<void> loadMessages() async {
     _isLoading = true;
@@ -54,6 +82,7 @@ class BroadcastViewModel extends ChangeNotifier {
       }
     } catch (e) {
       _error = e.toString();
+      print('❌ [BroadcastViewModel] Erreur loadMessages: $e');
     }
 
     _isLoading = false;
@@ -94,9 +123,17 @@ class BroadcastViewModel extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       _messages.removeWhere((m) => m.id == tempMessage.id);
+      print('❌ [BroadcastViewModel] Erreur sendMessage: $e');
     }
 
     _isSending = false;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    print('🧹 [BroadcastViewModel] dispose() - fermeture des subscriptions');
+    _messagesSubscription?.cancel();
+    super.dispose();
   }
 }
