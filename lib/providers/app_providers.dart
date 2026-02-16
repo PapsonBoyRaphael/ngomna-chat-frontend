@@ -86,7 +86,10 @@ class AppProviders {
           create: (_) => ContactRepository(),
         ),
         Provider<GroupChatRepository>(
-          create: (_) => GroupChatRepository(),
+          create: (context) => GroupChatRepository(
+            socketService: context.read<SocketService>(),
+            hiveService: context.read<HiveService>(),
+          ),
         ),
         Provider<GroupRepository>(
           create: (context) => GroupRepository(

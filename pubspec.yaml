@@ -18,13 +18,13 @@ dependencies:
 
   dio: ^5.4.0
 
-  socket_io_client: ^2.0.2
+  socket_io_client: ^3.1.4
 
   # Secure Storage pour les tokens JWT
-  flutter_secure_storage: ^9.0.0
+  flutter_secure_storage: ^10.0.0
 
   # Google Fonts
-  google_fonts: ^6.1.0
+  google_fonts: ^8.0.1
 
   # Icons
   cupertino_icons: ^1.0.6
@@ -35,9 +35,9 @@ dependencies:
   shared_preferences: ^2.5.4
 
   # UI
-  intl: ^0.19.0
+  intl: ^0.20.2
   image_picker: ^1.0.5 # Pour upload fichiers
-  file_picker: ^6.1.1 # Pour sélection fichiers
+  file_picker: ^10.3.10 # Pour sélection fichiers
 
   # Local Data Storage
   hive: ^2.2.3
@@ -49,7 +49,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.1
+  flutter_lints: ^6.0.0
   hive_generator: ^2.0.0
   build_runner: ^2.4.6
 

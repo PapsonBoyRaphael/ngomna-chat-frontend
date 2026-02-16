@@ -11,7 +11,7 @@ class MessageViewModel extends ChangeNotifier {
   final SocketService _socketService;
   final String _conversationId;
   final AuthViewModel _authViewModel;
-  final Chat? _chat;
+  Chat? _chat; // ✨ Maintenant mutable pour recevoir les mises à jour
 
   List<Message> _messages = [];
   bool _isLoading = false;
@@ -20,6 +20,9 @@ class MessageViewModel extends ChangeNotifier {
   List<Message> get messages => _messages;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  /// Données de la conversation (avec présence)
+  Chat? get chat => _chat;
 
   MessageViewModel({
     required MessageRepository messageRepository,
@@ -245,6 +248,16 @@ class MessageViewModel extends ChangeNotifier {
   void dispose() {
     _messagesSubscription?.cancel();
     super.dispose();
+  }
+
+  /// Mettre à jour le chat avec les nouvelles données (pour les changements de présence)
+  void updateChat(Chat updatedChat) {
+    if (updatedChat.id == _conversationId) {
+      print(
+          '🔄 [MessageViewModel] Chat mis à jour: isOnline=${updatedChat.isOnline}');
+      _chat = updatedChat;
+      notifyListeners(); // ← Notifie l'UI pour rafraîchir la présence
+    }
   }
 }
 

@@ -68,18 +68,24 @@ class GroupChatRepository {
     // Écouter les nouveaux messages de groupe via le stream unifié
     _socketService.streamManager.messageStream.listen((event) {
       if (event.context == 'group') {
-        _handleGroupMessageEvent(event);
+        // Appel async sans bloquer le stream
+        _handleGroupMessageEvent(event).catchError((e) {
+          print('❌ [GroupChatRepository] Erreur _handleGroupMessageEvent: $e');
+        });
       }
     });
 
     // Écouter les messages chargés (legacy stream)
     _socketService.messagesLoadedStream.listen((messages) {
-      _handleMessagesLoaded(messages);
+      // Appel async sans bloquer le stream
+      _handleMessagesLoaded(messages).catchError((e) {
+        print('❌ [GroupChatRepository] Erreur _handleMessagesLoaded: $e');
+      });
     });
   }
 
   /// Gérer un événement message de groupe (depuis MessageEvent)
-  void _handleGroupMessageEvent(MessageEvent event) {
+  Future<void> _handleGroupMessageEvent(MessageEvent event) async {
     try {
       print('📩 [GroupChatRepository] Nouveau message de groupe reçu');
 
@@ -88,6 +94,10 @@ class GroupChatRepository {
 
       final currentUser = _storageService.getUser();
       final isMe = event.senderId == currentUser?.matricule;
+
+      // Récupérer le nom complet du sender
+      final senderName = event.senderName ??
+          await _getSenderName(conversationId, event.senderId);
 
       final message = GroupMessage(
         id: event.messageId,
@@ -100,8 +110,9 @@ class GroupChatRepository {
         sender: User(
           id: event.senderId,
           matricule: event.senderId,
-          nom: event.senderName ?? 'Utilisateur',
+          nom: senderName,
           prenom: '',
+          avatarUrl: 'assets/avatars/default_avatar.png',
           isOnline: false,
         ),
       );
@@ -114,14 +125,36 @@ class GroupChatRepository {
       _messageReceivedController.add(message);
       _messagesUpdatedController.add(_messageCache[conversationId]!);
 
+      // Mettre à jour le stream du groupe spécifique pour notifier le ViewModel
+      _updateGroupMessageStream(conversationId, _messageCache[conversationId]!);
+
       print('✅ [GroupChatRepository] Message ajouté: ${message.content}');
     } catch (e) {
       print('❌ [GroupChatRepository] Erreur _handleGroupMessageEvent: $e');
     }
   }
 
+  /// Récupérer le nom complet d'un utilisateur depuis les métadonnées du chat
+  Future<String> _getSenderName(String conversationId, String senderId) async {
+    try {
+      final chat = await _hiveService.getChat(conversationId);
+      if (chat != null && chat.userMetadata.isNotEmpty) {
+        // Chercher l'utilisateur dans les métadonnées
+        for (final meta in chat.userMetadata) {
+          if (meta.userId == senderId) {
+            final fullName = meta.name.trim();
+            return fullName.isNotEmpty ? fullName : 'Utilisateur';
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ [GroupChatRepository] Erreur recherche nom: $e');
+    }
+    return 'Utilisateur';
+  }
+
   /// Gérer les messages chargés depuis le serveur
-  void _handleMessagesLoaded(List<Message> messages) {
+  Future<void> _handleMessagesLoaded(List<Message> messages) async {
     if (messages.isEmpty) return;
 
     final conversationId = messages.first.conversationId;
@@ -130,33 +163,47 @@ class GroupChatRepository {
     print(
         '📦 [GroupChatRepository] ${messages.length} messages chargés pour $conversationId');
 
-    final groupMessages = messages
-        .map((msg) => GroupMessage(
-              id: msg.id,
-              conversationId: msg.conversationId,
-              senderId: msg.senderId,
-              receiverId: msg.conversationId,
-              content: msg.content,
-              createdAt: msg.timestamp,
-              isMe: msg.senderId == currentUser?.matricule,
-              sender: User(
-                id: msg.senderId,
-                matricule: msg.senderId,
-                nom: msg.senderName ?? 'Utilisateur',
-                prenom: '',
-                isOnline: false,
-              ),
-            ))
-        .toList();
+    // Enrichir les messages avec les noms depuis userMetadata
+    final enrichedMessages = <GroupMessage>[];
+
+    for (final msg in messages) {
+      // Récupérer le nom complet du sender depuis userMetadata
+      final senderName =
+          msg.senderName ?? await _getSenderName(conversationId, msg.senderId);
+
+      enrichedMessages.add(GroupMessage(
+        id: msg.id,
+        conversationId: msg.conversationId,
+        senderId: msg.senderId,
+        receiverId: msg.conversationId,
+        content: msg.content,
+        createdAt: msg.timestamp,
+        isMe: msg.senderId == currentUser?.matricule,
+        sender: User(
+          id: msg.senderId,
+          matricule: msg.senderId,
+          nom: senderName,
+          prenom: '',
+          avatarUrl: 'assets/avatars/default_avatar.png',
+          isOnline: false,
+        ),
+      ));
+    }
 
     // Trier par date
-    groupMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    enrichedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
     // Mettre à jour le cache
-    _messageCache[conversationId] = groupMessages;
+    _messageCache[conversationId] = enrichedMessages;
 
-    // Émettre l'événement
-    _messagesUpdatedController.add(groupMessages);
+    // Émettre l'événement global
+    _messagesUpdatedController.add(enrichedMessages);
+
+    // Mettre à jour le stream spécifique du groupe pour notifier le ViewModel
+    _updateGroupMessageStream(conversationId, enrichedMessages);
+
+    print(
+        '✅ [GroupChatRepository] ${enrichedMessages.length} messages mis à jour dans cache et stream');
   }
 
   /// Récupérer les messages d'un groupe
@@ -187,31 +234,40 @@ class GroupChatRepository {
       if (cachedMessages.isNotEmpty) {
         final currentUser = _storageService.getUser();
 
-        final groupMessages = cachedMessages
-            .map((msg) => GroupMessage(
-                  id: msg.id,
-                  conversationId: msg.conversationId,
-                  senderId: msg.senderId,
-                  receiverId: msg.conversationId,
-                  content: msg.content,
-                  createdAt: msg.timestamp,
-                  isMe: msg.senderId == currentUser?.matricule,
-                  sender: User(
-                    id: msg.senderId,
-                    matricule: msg.senderId,
-                    nom: msg.senderName ?? 'Utilisateur',
-                    prenom: '',
-                    isOnline: false,
-                  ),
-                ))
-            .toList();
+        // Enrichir les messages avec les noms depuis userMetadata
+        final enrichedGroupMessages = <GroupMessage>[];
 
-        groupMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        _messageCache[groupId] = groupMessages;
+        for (final msg in cachedMessages) {
+          // Récupérer le nom complet du sender
+          final senderName =
+              msg.senderName ?? await _getSenderName(groupId, msg.senderId);
+
+          enrichedGroupMessages.add(GroupMessage(
+            id: msg.id,
+            conversationId: msg.conversationId,
+            senderId: msg.senderId,
+            receiverId: msg.conversationId,
+            content: msg.content,
+            createdAt: msg.timestamp,
+            isMe: msg.senderId == currentUser?.matricule,
+            sender: User(
+              id: msg.senderId,
+              matricule: msg.senderId,
+              nom: senderName,
+              prenom: '',
+              avatarUrl: 'assets/avatars/default_avatar.png',
+              isOnline: false,
+            ),
+          ));
+        }
+
+        enrichedGroupMessages
+            .sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        _messageCache[groupId] = enrichedGroupMessages;
 
         print(
-            '📦 [GroupChatRepository] ${groupMessages.length} messages depuis Hive');
-        return groupMessages;
+            '📦 [GroupChatRepository] ${enrichedGroupMessages.length} messages depuis Hive');
+        return enrichedGroupMessages;
       }
     } catch (e) {
       print('⚠️ [GroupChatRepository] Erreur lecture Hive: $e');
@@ -243,7 +299,9 @@ class GroupChatRepository {
         matricule: currentUser?.matricule ?? '',
         nom: currentUser?.nom ?? '',
         prenom: currentUser?.prenom ?? '',
-        avatarUrl: currentUser?.avatarUrl,
+        avatarUrl: (currentUser?.avatarUrl?.isNotEmpty ?? false)
+            ? currentUser?.avatarUrl
+            : 'assets/avatars/default_avatar.png',
         isOnline: true,
       ),
     );

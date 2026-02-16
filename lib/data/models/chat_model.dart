@@ -804,7 +804,7 @@ class LastMessage {
 
     return LastMessage(
       id: messageId,
-      content: json['content']?.toString() ?? '',
+      content: (json['content'] != null) ? json['content'].toString() : '',
       type: json['type']?.toString() ?? 'TEXT',
       senderId: json['senderId']?.toString() ?? '',
       senderName: json['senderName']?.toString(),
@@ -988,6 +988,7 @@ class AuditLogEntry {
       'metadata': metadata,
       '_id': {'\$oid': logId},
     };
+    
   }
 }
 
@@ -1167,14 +1168,24 @@ extension ChatHelpers on Chat {
           '🟢 [Chat.isOnline] ${displayName}: otherUser=${otherParticipant.userId}, isOnline=$isParticipantOnline');
       return isParticipantOnline;
     } else {
-      // Pour les groupes, vérifier si au moins un autre participant est en ligne
-      final onlineCount = presenceStats?.onlineCount ?? 0;
-      // Ne pas compter l'utilisateur courant
+      // Pour les groupes : utiliser presenceStats comme source principale
+      // et userMetadata comme fallback
+
+      // Priorité 1 : presenceStats (maintenu par le serveur)
+      if (presenceStats != null) {
+        final othersOnlineFromStats = presenceStats!.onlineParticipants
+            .any((id) => id != currentUserMatricule);
+        print(
+            '🟢 [Chat.isOnline] Groupe ${displayName}: othersOnline=$othersOnlineFromStats, statsOnlineCount=${presenceStats!.onlineCount}');
+        return othersOnlineFromStats;
+      }
+
+      // Fallback : userMetadata (peut être périmé)
       final othersOnline = userMetadata.any((meta) =>
           meta.userId != currentUserMatricule &&
           (meta.presence?.isOnline ?? false));
       print(
-          '🟢 [Chat.isOnline] Groupe ${displayName}: othersOnline=$othersOnline, statsOnlineCount=$onlineCount');
+          '🟢 [Chat.isOnline] Groupe ${displayName}: othersOnline=$othersOnline (fallback userMetadata)');
       return othersOnline;
     }
   }

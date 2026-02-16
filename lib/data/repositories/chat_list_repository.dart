@@ -21,6 +21,9 @@ class ChatListRepository {
 
   Stream<List<Chat>> get chatsStream => _conversationUpdateController.stream;
 
+  // Alias pour accès depuis les ViewModels
+  Stream<List<Chat>> get chatsUpdated => _conversationUpdateController.stream;
+
   factory ChatListRepository({
     required SocketService socketService,
     required HiveService hiveService,
@@ -254,22 +257,8 @@ class ChatListRepository {
               if (meta.userId == currentUser.matricule) {
                 print(
                     '✅ [ChatListRepository] Mise à jour userMetadata unreadCount pour ${currentUser.matricule}: ${meta.unreadCount} -> ${currentCount + 1}');
-                return ParticipantMetadata(
-                  userId: meta.userId,
-                  unreadCount: currentCount + 1,
-                  lastReadAt: meta.lastReadAt,
-                  isMuted: meta.isMuted,
-                  isPinned: meta.isPinned,
-                  customName: meta.customName,
-                  notificationSettings: meta.notificationSettings,
-                  nom: meta.nom,
-                  prenom: meta.prenom,
-                  avatar: meta.avatar,
-                  metadataId: meta.metadataId,
-                  sexe: meta.sexe,
-                  departement: meta.departement,
-                  ministere: meta.ministere,
-                );
+                // Utiliser copyWith pour préserver tous les champs automatiquement
+                return meta.copyWith(unreadCount: currentCount + 1);
               }
               return meta;
             }).toList();
@@ -504,7 +493,6 @@ class ChatListRepository {
           if (data is Map<String, dynamic>) {
             final userId = data['userId'] as String?;
             final matricule = data['matricule'] as String?;
-            final timestamp = data['timestamp'];
             print(
                 '   🟢 Utilisateur EN LIGNE: userId=$userId, matricule=$matricule');
             _updateUserPresenceInCache(userId ?? matricule, true, 'online');
@@ -516,7 +504,6 @@ class ChatListRepository {
           if (data is Map<String, dynamic>) {
             final userId = data['userId'] as String?;
             final matricule = data['matricule'] as String?;
-            final timestamp = data['timestamp'];
             print(
                 '   🔴 Utilisateur HORS LIGNE: userId=$userId, matricule=$matricule');
             _updateUserPresenceInCache(userId ?? matricule, false, 'offline');
@@ -570,8 +557,38 @@ class ChatListRepository {
             List<ParticipantMetadata>.from(chat.userMetadata);
         updatedUserMetadata[participantIndex] = updatedParticipant;
 
-        // Créer une nouvelle instance de Chat avec les métadonnées mises à jour
-        final updatedChat = chat.copyWith(userMetadata: updatedUserMetadata);
+        // 🔢 Recalculer les presenceStats en comptant les utilisateurs en ligne
+        PresenceStats? updatedPresenceStats;
+        if (chat.presenceStats != null) {
+          // Compter combien d'utilisateurs sont maintenant en ligne
+          final onlineCount = updatedUserMetadata
+              .where((meta) => meta.presence?.isOnline ?? false)
+              .length;
+
+          final offlineCount =
+              chat.presenceStats!.totalParticipants - onlineCount;
+
+          // Créer les nouveaux presenceStats
+          updatedPresenceStats = PresenceStats(
+            onlineCount: onlineCount,
+            offlineCount:
+                offlineCount.clamp(0, chat.presenceStats!.totalParticipants),
+            totalParticipants: chat.presenceStats!.totalParticipants,
+            onlineParticipants: updatedUserMetadata
+                .where((meta) => meta.presence?.isOnline ?? false)
+                .map((meta) => meta.userId)
+                .toList(),
+          );
+
+          print(
+              '   📊 PresenceStats recalculés: $onlineCount/${chat.presenceStats!.totalParticipants} en ligne');
+        }
+
+        // Créer une nouvelle instance de Chat avec les métadonnées ET presenceStats mis à jour
+        final updatedChat = chat.copyWith(
+          userMetadata: updatedUserMetadata,
+          presenceStats: updatedPresenceStats,
+        );
 
         // Mettre à jour le cache
         _chatsCache[chatId] = updatedChat;
@@ -591,16 +608,53 @@ class ChatListRepository {
   /// Mettre à jour la liste des utilisateurs en ligne dans une conversation
   void _updateOnlineUsersInConversation(
       String? conversationId, List? onlineUsers) {
-    if (conversationId == null) return;
+    if (conversationId == null || onlineUsers == null) return;
 
     print(
         '🔄 [ChatListRepository] Mise à jour utilisateurs en ligne pour $conversationId');
-    print('   - Utilisateurs en ligne: $onlineUsers');
+    print('   - Utilisateurs en ligne: ${onlineUsers.length}');
 
     final chat = _chatsCache[conversationId];
     if (chat != null) {
       print('   ✅ Conversation trouvée dans le cache');
-      // TODO: Mettre à jour les presenceStats
+
+      // Mettre à jour les presenceStats
+      if (chat.presenceStats != null) {
+        // Créer de nouveaux presenceStats avec les valeurs mises à jour
+        final offlineCount =
+            chat.presenceStats!.totalParticipants - onlineUsers.length;
+        final updatedPresenceStats = PresenceStats(
+          onlineCount: onlineUsers.length,
+          offlineCount:
+              offlineCount.clamp(0, chat.presenceStats!.totalParticipants),
+          totalParticipants: chat.presenceStats!.totalParticipants,
+          onlineParticipants: List<String>.from(
+            onlineUsers.map(
+                (u) => u is Map ? u['userId'] ?? u['id'] ?? '' : u.toString()),
+          ),
+        );
+
+        // Créer un chat mis à jour avec les nouveaux presenceStats
+        final updatedChat = chat.copyWith(
+          presenceStats: updatedPresenceStats,
+        );
+
+        // Mettre à jour le cache
+        _chatsCache[conversationId] = updatedChat;
+
+        print(
+            '   📊 PresenceStats mis à jour: ${updatedPresenceStats.onlineCount}/${updatedPresenceStats.totalParticipants} en ligne');
+
+        // ✨ Notifier les listeners avec la conversation mise à jour
+        _conversationUpdateController.add(_chatsCache.values.toList());
+
+        // Mettre à jour aussi Hive pour persistance
+        _hiveService.saveChat(updatedChat).catchError((e) {
+          print('   ⚠️ Erreur sauvegarde Hive: $e');
+        });
+      } else {
+        print('   ⚠️ PresenceStats est null, impossible de mettre à jour');
+      }
     } else {
       print('   ⚠️ Conversation $conversationId non trouvée dans le cache');
     }
@@ -708,21 +762,10 @@ class ChatListRepository {
         if (meta.userId == userId) {
           print(
               '✅ Trouvé userMetadata pour $userId, mise à jour unreadCount de ${meta.unreadCount} à 0');
-          return ParticipantMetadata(
-            userId: meta.userId,
+          // Utiliser copyWith pour préserver tous les champs automatiquement
+          return meta.copyWith(
             unreadCount: 0,
             lastReadAt: DateTime.now(),
-            isMuted: meta.isMuted,
-            isPinned: meta.isPinned,
-            customName: meta.customName,
-            notificationSettings: meta.notificationSettings,
-            nom: meta.nom,
-            prenom: meta.prenom,
-            avatar: meta.avatar,
-            metadataId: meta.metadataId,
-            sexe: meta.sexe,
-            departement: meta.departement,
-            ministere: meta.ministere,
           );
         }
         return meta;
@@ -814,22 +857,12 @@ class ChatListRepository {
   /// Mettre à jour le statut du lastMessage dans le cache
   void _updateLastMessageStatus(
       String messageId, String status, String? conversationId) {
-    print(
-        '🔍 [_updateLastMessageStatus] Début - messageId: $messageId, status: $status, conversationId: $conversationId');
-    print(
-        '🔍 [_updateLastMessageStatus] Cache actuel: ${_chatsCache.length} conversations');
-
     final newStatus = Message.parseMessageStatus(status);
     int updatedCount = 0;
 
     // Si on a l'ID de conversation, on cherche directement
     if (conversationId != null && _chatsCache.containsKey(conversationId)) {
       final chat = _chatsCache[conversationId]!;
-      print(
-          '🔍 [_updateLastMessageStatus] Conversation trouvée: ${chat.displayName}');
-      print(
-          '🔍 [_updateLastMessageStatus] LastMessage ID: ${chat.lastMessage?.id}, Cherché: $messageId');
-
       if (chat.lastMessage != null && chat.lastMessage!.id == messageId) {
         final updatedLastMessage =
             chat.lastMessage!.copyWith(status: newStatus);
@@ -841,22 +874,16 @@ class ChatListRepository {
       }
     } else {
       // Sinon, parcourir toutes les conversations
-      print(
-          '🔍 [_updateLastMessageStatus] Parcours de toutes les conversations...');
       for (final chatId in _chatsCache.keys.toList()) {
         final chat = _chatsCache[chatId]!;
-        if (chat.lastMessage != null) {
+        if (chat.lastMessage != null && chat.lastMessage!.id == messageId) {
+          final updatedLastMessage =
+              chat.lastMessage!.copyWith(status: newStatus);
+          final updatedChat = chat.copyWith(lastMessage: updatedLastMessage);
+          _chatsCache[chatId] = updatedChat;
+          updatedCount++;
           print(
-              '   - ${chat.displayName}: lastMessage.id=${chat.lastMessage!.id}');
-          if (chat.lastMessage!.id == messageId) {
-            final updatedLastMessage =
-                chat.lastMessage!.copyWith(status: newStatus);
-            final updatedChat = chat.copyWith(lastMessage: updatedLastMessage);
-            _chatsCache[chatId] = updatedChat;
-            updatedCount++;
-            print(
-                '   ✅ LastMessage mis à jour dans conversation $chatId: $status');
-          }
+              '   ✅ LastMessage mis à jour dans conversation $chatId: $status');
         }
       }
     }
@@ -864,9 +891,6 @@ class ChatListRepository {
     if (updatedCount > 0) {
       print('📨 LastMessage statut mis à jour: $updatedCount conversations');
       _conversationUpdateController.add(_chatsCache.values.toList());
-    } else {
-      print(
-          '⚠️ [_updateLastMessageStatus] Aucune conversation mise à jour pour le message $messageId');
     }
   }
 

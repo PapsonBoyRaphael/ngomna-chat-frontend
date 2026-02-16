@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import 'package:ngomna_chat/viewmodels/group_chat_viewmodel.dart';
 import 'package:ngomna_chat/data/repositories/group_chat_repository.dart';
+import 'package:ngomna_chat/data/repositories/chat_list_repository.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_app_bar.dart';
 import 'package:ngomna_chat/views/widgets/chat/message_bubble_with_avatar.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_input.dart';
@@ -31,25 +34,66 @@ class ChatGroupScreen extends StatefulWidget {
 
 class _ChatGroupScreenState extends State<ChatGroupScreen> {
   late GroupChatViewModel _viewModel;
+  late StreamSubscription? _chatUpdatesSubscription;
+
+  // 🟢 Timer pour rafraîchir les dates/heures automatiquement
+  Timer? _dateRefreshTimer;
 
   @override
   void initState() {
     super.initState();
 
-    // Créer le ViewModel
+    // Créer le ViewModel avec le repository du provider
+    final repository = context.read<GroupChatRepository>();
     _viewModel = GroupChatViewModel(
-      GroupChatRepository(),
+      repository,
       widget.groupId,
       widget.conversationData,
     );
 
     // 🟢 IMPORTANT: Appeler init() pour écouter les changements en temps réel
     _viewModel.init();
+
+    // 🟢 NOUVEAU: Écouter les mises à jour du chat (présence, etc.) depuis ChatListRepository
+    final chatListRepository = context.read<ChatListRepository>();
+    _chatUpdatesSubscription = chatListRepository.chatsUpdated.listen((chats) {
+      // Chercher le chat actuel dans la liste mise à jour
+      Chat? updatedChat;
+      for (final chat in chats) {
+        if (chat.id == widget.groupId) {
+          updatedChat = chat;
+          break;
+        }
+      }
+
+      if (updatedChat != null) {
+        print('📡 [ChatGroupScreen] Chat mis à jour reçu, notifiant ViewModel');
+        _viewModel.updateChat(updatedChat);
+      }
+    });
+
+    // 🟢 NOUVEAU: Démarrer le timer de rafraîchissement des dates (toutes les minutes)
+    _startDateRefreshTimer();
+  }
+
+  /// 🟢 Démarre le timer pour rafraîchir les dates/heures toutes les minutes
+  void _startDateRefreshTimer() {
+    _dateRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      // Forcer la reconstruction du widget pour mettre à jour les dates relatives
+      if (mounted) {
+        setState(() {
+          // Le setState() va forcer la reconstruction, les dates seront recalculées
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     print('🧹 [ChatGroupScreen] dispose()');
+    _chatUpdatesSubscription?.cancel();
+    _dateRefreshTimer
+        ?.cancel(); // 🟢 Annuler le timer de rafraîchissement des dates
     _viewModel.dispose();
     super.dispose();
   }
@@ -112,7 +156,9 @@ class _ChatGroupContent extends StatelessWidget {
               prenom: groupName.split(' ').length > 1
                   ? groupName.split(' ').sublist(1).join(' ')
                   : '',
-              avatarUrl: groupAvatar,
+              avatarUrl: (groupAvatar != null && groupAvatar!.isNotEmpty)
+                  ? groupAvatar
+                  : 'assets/avatars/group.png',
               isOnline: onlineCount > 0, // Au moins un membre en ligne
             ),
             isGroup: true,
@@ -205,7 +251,13 @@ class _ChatGroupContent extends StatelessWidget {
 
     String dateText = '';
     if (createdAt != null) {
-      dateText = ' le ${DateFormatter.formatDateSeparator(createdAt)}';
+      final formattedDate = DateFormatter.formatDateSeparator(createdAt);
+      // Éviter "le Aujourd'hui", utiliser juste "Aujourd'hui"
+      if (formattedDate == 'Aujourd\'hui') {
+        dateText = ' $formattedDate';
+      } else {
+        dateText = ' le $formattedDate';
+      }
     }
 
     return Padding(

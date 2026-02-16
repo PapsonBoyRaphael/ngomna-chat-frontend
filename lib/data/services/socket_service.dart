@@ -11,6 +11,19 @@ class SocketService {
   static const Duration _reconnectInterval = Duration(seconds: 3);
   static const int _maxReconnectAttempts = 5;
 
+  // 🔥 SINGLETON PATTERN
+  static SocketService? _instance;
+
+  factory SocketService() {
+    _instance ??= SocketService._internal();
+    return _instance!;
+  }
+
+  SocketService._internal() {
+    _loadCredentials();
+    _initializeSocket();
+  }
+
   late io.Socket _socket;
   bool _isConnected = false;
   bool _isAuthenticated = false;
@@ -102,11 +115,6 @@ class SocketService {
   bool get isConnected => _isConnected;
   bool get isAuthenticated => _isAuthenticated;
 
-  SocketService() {
-    _loadCredentials();
-    _initializeSocket();
-  }
-
   Future<void> requestConversations({int page = 1, int limit = 20}) async {
     if (!_isAuthenticated) return;
 
@@ -165,7 +173,9 @@ class SocketService {
   void _setupEventListeners() {
     // Événements de connexion
     _socket.onConnect((_) {
-      print('✅ Socket.IO connecté');
+      final timestamp = DateTime.now().toIso8601String();
+      print('[$timestamp] ✅ Socket.IO connecté');
+      print('[$timestamp] 🔄 _isConnected: false → true');
       _isConnected = true;
       _reconnectAttempts = 0;
       _streamManager.emitConnection(ConnectionState.connected);
@@ -174,8 +184,15 @@ class SocketService {
       _startHeartbeat();
 
       // Authentifier automatiquement si on a des credentials
+      print(
+          '[$timestamp] 🔍 [onConnect] Credentials: token=${_accessToken != null ? "présent" : "manquant"}, userId=$_userId, matricule=$_matricule');
       if (_accessToken != null && _userId != null) {
+        print(
+            '[$timestamp] 🔐 [onConnect] Déclenchement authentification automatique');
         _authenticateWithToken();
+      } else {
+        print(
+            '[$timestamp] ⚠️ [onConnect] PAS d\'authentification auto: _accessToken=${_accessToken != null}, _userId=${_userId != null}');
       }
     });
 
@@ -204,7 +221,7 @@ class SocketService {
 
       final response = data as Map<String, dynamic>;
       print(
-          '📦 Conversations auto-jointe: ${response['autoJoinedConversations']}');
+          '📬 Conversations auto-jointe: ${response['autoJoinedConversations']}');
     });
 
     _socket.on('auth_error', (data) {
@@ -223,21 +240,29 @@ class SocketService {
         final messageData = data as Map<String, dynamic>;
         final message = Message.fromJson(messageData);
 
-        // SEUL système: Émit via ChatStreamManager
-        final event = MessageEvent.fromJson(messageData, 'private');
-        _streamManager.emitMessage(event);
+        // Déterminer le contexte selon le type de message
+        String context = 'private';
+        if (messageData.containsKey('type')) {
+          final type = messageData['type'] as String?;
+          if (type == 'GROUP') {
+            context = 'group';
+          } else if (type == 'BROADCAST') {
+            context = 'broadcast';
+          }
+        }
 
-        // ❌ SUPPRIMÉ: _newMessageController.add(message);
-        // Raison: Utiliser ChatStreamManager.messageStream à la place
+        // Émission via ChatStreamManager
+        final event = MessageEvent.fromJson(messageData, context);
+        _streamManager.emitMessage(event);
 
         // Marquer automatiquement comme livré
         if (message.id.isNotEmpty && !message.isMe) {
           print(
-              '📦 markMessageDelivered (private) → messageId=${message.id}, conversationId=${message.conversationId}');
+              '📦 markMessageDelivered ($context) → messageId=${message.id}, conversationId=${message.conversationId}');
           markMessageDelivered(message.id, message.conversationId);
         } else {
           print(
-              '⏭️ markMessageDelivered ignoré (private) → id=${message.id}, isMe=${message.isMe}');
+              '⏭️ markMessageDelivered ignoré ($context) → id=${message.id}, isMe=${message.isMe}');
         }
       } catch (e) {
         print('❌ Erreur parsing nouveau message: $e');
@@ -649,23 +674,56 @@ class SocketService {
 
   /// Authentifier avec token existant
   Future<void> _authenticateWithToken() async {
+    print(
+        '🔐 [_authenticateWithToken] Entrée: _isConnected=$_isConnected, token=${_accessToken != null}, userId=$_userId');
+
     if (!_isConnected || _accessToken == null || _userId == null) {
+      print(
+          '❌ [_authenticateWithToken] Conditions échouées, pas d\'envoi authenticate');
       return;
     }
 
+    print('📤 [_authenticateWithToken] Envoi \'authenticate\' au serveur...');
     _socket.emit('authenticate', {
       'userId': _userId,
       'matricule': _matricule,
       'token': _accessToken,
     });
 
-    print('🔐 Authentification auto avec token existant');
+    print(
+        '✅ [_authenticateWithToken] Event \'authenticate\' envoyé (userId=$_userId, matricule=$_matricule)');
   }
 
-  /// Attendre la connexion
-  Future<void> _waitForConnection({int maxRetries = 10}) async {
+  /// Attendre la connexion (et optionnellement l'authentification)
+  Future<void> _waitForConnection(
+      {int maxRetries = 10, bool requireAuth = false}) async {
+    print(
+        '🔄 [_waitForConnection] Démarrage (requireAuth=$requireAuth, maxRetries=$maxRetries)');
+
     for (int i = 0; i < maxRetries; i++) {
-      if (_isConnected) return;
+      // Vérifier l'état réel du socket ET nos flags
+      final socketConnected = _socket.connected;
+      final flagsOk =
+          requireAuth ? (_isConnected && _isAuthenticated) : _isConnected;
+
+      if (i % 5 == 0) {
+        // Log tous les 2.5 secondes
+        print(
+            '🔄 [_waitForConnection] Tentative ${i + 1}/$maxRetries: socket.connected=$socketConnected, _isConnected=$_isConnected, _isAuthenticated=$_isAuthenticated');
+      }
+
+      if (socketConnected && flagsOk) {
+        print(
+            '✅ [_waitForConnection] Socket prêt après ${i + 1} tentatives (connected=$socketConnected, authenticated=$_isAuthenticated)');
+        return;
+      }
+
+      // Synchroniser les flags si désynchronisés
+      if (socketConnected && !_isConnected) {
+        print('⚠️ [_waitForConnection] Flags désynchronisés, correction...');
+        _isConnected = true;
+      }
+
       await Future.delayed(const Duration(milliseconds: 500));
     }
     throw TimeoutException('Connexion Socket.IO timeout');
@@ -751,7 +809,10 @@ class SocketService {
   Future<void> getMessages(String conversationId,
       {int page = 1, int limit = 50}) async {
     print(
-        '🔍 [SocketService] getMessages appelé: conversationId=$conversationId, isConnected=$_isConnected, isAuthenticated=$_isAuthenticated');
+        '🔍 [SocketService] getMessages appelé: conversationId=$conversationId');
+    print(
+        '   - Flags: isConnected=$_isConnected, isAuthenticated=$_isAuthenticated');
+    print('   - Socket réel: _socket.connected=${_socket.connected}');
 
     // Temporairement désactivé pour test
     // if (!_isAuthenticated) {
@@ -760,16 +821,26 @@ class SocketService {
     //   return;
     // }
 
-    // Si pas connecté, attendre la reconnexion (max 10 secondes)
-    if (!_isConnected) {
-      print('⏳ [SocketService] Socket non connecté, attente de reconnexion...');
+    // Si pas connecté OU pas authentifié, attendre/forcer la reconnexion
+    if (!_isConnected || !_isAuthenticated) {
+      print('⏳ [SocketService] Socket non prêt, tentative de reconnexion...');
+
+      // Forcer la reconnexion immédiatement si nécessaire
+      if (!_socket.connected) {
+        print('🔄 [SocketService] Déclenchement manuel de socket.connect()');
+        _socket.connect();
+      }
+
       try {
-        await _waitForConnection(maxRetries: 20); // 20 * 500ms = 10 secondes
-        print('✅ [SocketService] Socket reconnecté, envoi de getMessages');
+        await _waitForConnection(
+            maxRetries: 40, requireAuth: true); // 40 * 500ms = 20 secondes
+        print(
+            '✅ [SocketService] Socket prêt (connecté et authentifié), envoi de getMessages');
       } catch (e) {
         print('❌ [SocketService] Timeout reconnexion: $e');
         print(
-            '   - État socket: connected=$_isConnected, authenticated=$_isAuthenticated');
+            '   - État flags: connected=$_isConnected, authenticated=$_isAuthenticated');
+        print('   - Socket.connected: ${_socket.connected}');
         print('   - Matricule: $_matricule');
         return;
       }

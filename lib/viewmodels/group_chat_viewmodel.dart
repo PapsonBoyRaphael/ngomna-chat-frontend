@@ -7,7 +7,7 @@ import 'package:ngomna_chat/data/repositories/group_chat_repository.dart';
 class GroupChatViewModel extends ChangeNotifier {
   final GroupChatRepository _repository;
   final String groupId;
-  final Chat? _chat;
+  Chat? _chat;
 
   List<GroupMessage> _messages = [];
   bool _isLoading = false;
@@ -48,8 +48,17 @@ class GroupChatViewModel extends ChangeNotifier {
             );
 
     if (creatorMetadata != null) {
-      final fullName = creatorMetadata.name;
-      return fullName.isNotEmpty ? fullName : 'Le créateur';
+      // Utiliser seulement le prénom si disponible et valide
+      // Sinon utiliser nom + prenom
+      if (creatorMetadata.prenomDisplay.isNotEmpty &&
+          creatorMetadata.prenomDisplay.length < 50) {
+        return creatorMetadata.prenomDisplay.trim();
+      }
+
+      final fullName = creatorMetadata.name.trim();
+      if (fullName.isNotEmpty && fullName.length < 100) {
+        return fullName;
+      }
     }
 
     return 'Le créateur';
@@ -143,5 +152,15 @@ class GroupChatViewModel extends ChangeNotifier {
     print('🧹 [GroupChatViewModel] dispose() - fermeture des subscriptions');
     _messagesSubscription?.cancel();
     super.dispose();
+  }
+
+  /// Mettre à jour le chat avec les nouvelles données (pour les changements de présence)
+  void updateChat(Chat updatedChat) {
+    if (updatedChat.id == groupId) {
+      print(
+          '🔄 [GroupChatViewModel] Chat mis à jour: présence=${updatedChat.presenceStats?.onlineCount} en ligne');
+      _chat = updatedChat;
+      notifyListeners(); // ← Notifie l'UI pour rafraîchir onlineCount, etc.
+    }
   }
 }
