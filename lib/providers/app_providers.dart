@@ -231,7 +231,7 @@ class AppProviders {
       // Initialiser StorageService avec timeout
       final storageService = StorageService();
       await storageService.initialize().timeout(
-            Duration(seconds: 10),
+            Duration(seconds: 30),
             onTimeout: () =>
                 throw TimeoutException('StorageService initialization timeout'),
           );

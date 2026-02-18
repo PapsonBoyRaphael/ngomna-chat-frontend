@@ -24,6 +24,10 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// Indique si c'est une diffusion (broadcast)
   final bool isBroadcast;
 
+  /// Override de présence pour les chats personnels
+  final bool? isOnlineOverride;
+  final DateTime? lastSeenOverride;
+
   const ChatAppBar({
     super.key,
     required this.user,
@@ -38,6 +42,8 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.onlineCount,
     this.totalParticipants,
     this.isBroadcast = false,
+    this.isOnlineOverride,
+    this.lastSeenOverride,
   });
 
   @override
@@ -73,6 +79,9 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     final title = customTitle ?? user.fullName;
     final String subtitle;
 
+    final effectiveIsOnline = isOnlineOverride ?? user.isOnline;
+    final effectiveLastSeen = lastSeenOverride ?? user.lastSeen;
+
     if (customSubtitle != null) {
       subtitle = customSubtitle!;
     } else if (isGroup) {
@@ -82,7 +91,8 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
       subtitle = '$total membres${online > 0 ? ', $online en ligne' : ''}';
     } else {
       // Pour les chats personnels
-      subtitle = user.isOnline ? 'En ligne' : _formatLastSeen(user.lastSeen);
+      subtitle =
+          effectiveIsOnline ? 'En ligne' : _formatLastSeen(effectiveLastSeen);
     }
 
     final avatarUrl = customAvatar ?? user.avatarUrl;
@@ -97,7 +107,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
               child: const Icon(Icons.arrow_back_ios, size: 18),
             ),
             const SizedBox(width: 8),
-            _buildAvatar(avatarUrl),
+            _buildAvatar(avatarUrl, isOnline: effectiveIsOnline),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -141,7 +151,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _buildAvatar(String? avatarUrl) {
+  Widget _buildAvatar(String? avatarUrl, {required bool isOnline}) {
     return Stack(
       children: [
         CircleAvatar(
@@ -153,7 +163,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
                 : 'assets/avatars/default_avatar.png',
           ),
         ),
-        if (user.isOnline && !isGroup && !isBroadcast)
+        if (isOnline && !isGroup && !isBroadcast)
           Positioned(
             bottom: 1,
             right: 1,

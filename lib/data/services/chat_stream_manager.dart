@@ -104,12 +104,42 @@ class TypingEvent {
   });
 
   factory TypingEvent.fromJson(Map<String, dynamic> json) {
+    final rawEvent = json['event']?.toString();
+    final rawStatus = json['status']?.toString();
+
+    bool isTyping = json['isTyping'] ?? false;
+
+    if (rawEvent != null) {
+      if (rawEvent == 'typing:stop') {
+        isTyping = false;
+      } else if (rawEvent.startsWith('typing:')) {
+        isTyping = true;
+      }
+    }
+
+    if (rawStatus != null) {
+      if (rawStatus == 'stop') {
+        isTyping = false;
+      } else if (rawStatus == 'start' || rawStatus == 'refresh') {
+        isTyping = true;
+      }
+    }
+
+    final timestampValue = json['timestamp'];
+    DateTime timestamp;
+    if (timestampValue is int) {
+      timestamp = DateTime.fromMillisecondsSinceEpoch(timestampValue);
+    } else if (timestampValue is String) {
+      timestamp = DateTime.parse(timestampValue);
+    } else {
+      timestamp = DateTime.now();
+    }
+
     return TypingEvent(
       conversationId: json['conversationId'] ?? '',
-      userId: json['userId'] ?? '',
-      isTyping: json['isTyping'] ?? false,
-      timestamp:
-          DateTime.parse(json['timestamp'] ?? DateTime.now().toIso8601String()),
+      userId: json['userId'] ?? json['matricule'] ?? '',
+      isTyping: isTyping,
+      timestamp: timestamp,
     );
   }
 }

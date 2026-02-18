@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:ngomna_chat/data/services/storage_service.dart';
+import 'package:ngomna_chat/core/constants/app_url.dart';
 
 class ApiService {
-  static const String _baseUrl = 'http://localhost:8000'; // Gateway URL
+  static final String _baseUrl = AppUrl.apiBaseUrl; // Gateway URL (dynamique)
 
   late Dio _dio;
   late StorageService _storageService;

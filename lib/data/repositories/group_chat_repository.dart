@@ -55,6 +55,9 @@ class GroupChatRepository {
   Stream<List<GroupMessage>> get onMessagesUpdated =>
       _messagesUpdatedController.stream;
 
+  // Getter pour accéder au socketService
+  SocketService get socketService => _socketService;
+
   // Cache for group messages
   final Map<String, List<GroupMessage>> _messageCache = {};
 

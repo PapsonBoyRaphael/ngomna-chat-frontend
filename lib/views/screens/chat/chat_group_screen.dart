@@ -39,6 +39,11 @@ class _ChatGroupScreenState extends State<ChatGroupScreen> {
   // 🟢 Timer pour rafraîchir les dates/heures automatiquement
   Timer? _dateRefreshTimer;
 
+  // Typing indicator
+  Timer? _typingTimer;
+  bool _isTyping = false;
+  final TextEditingController _textController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -94,8 +99,54 @@ class _ChatGroupScreenState extends State<ChatGroupScreen> {
     _chatUpdatesSubscription?.cancel();
     _dateRefreshTimer
         ?.cancel(); // 🟢 Annuler le timer de rafraîchissement des dates
+    _typingTimer?.cancel();
+    if (_isTyping) {
+      _viewModel.stopTyping(widget.groupId);
+    }
+    _textController.dispose();
     _viewModel.dispose();
     super.dispose();
+  }
+
+  void _onTextChanged(String text) {
+    if (text.isNotEmpty && !_isTyping) {
+      _startTyping();
+    } else if (text.isNotEmpty && _isTyping) {
+      _refreshTyping();
+    } else if (text.isEmpty && _isTyping) {
+      _stopTyping();
+    }
+
+    _resetTypingTimer();
+  }
+
+  void _startTyping() {
+    if (!_isTyping) {
+      _isTyping = true;
+      _viewModel.startTyping(widget.groupId, status: 'start');
+    }
+  }
+
+  void _refreshTyping() {
+    if (_isTyping) {
+      _viewModel.startTyping(widget.groupId, status: 'refresh');
+    }
+  }
+
+  void _stopTyping() {
+    if (_isTyping) {
+      _isTyping = false;
+      _viewModel.stopTyping(widget.groupId);
+    }
+  }
+
+  void _resetTypingTimer() {
+    _typingTimer?.cancel();
+    _typingTimer = Timer(const Duration(seconds: 3), () {
+      if (_isTyping) {
+        _stopTyping();
+      }
+    });
   }
 
   @override
@@ -121,6 +172,12 @@ class _ChatGroupScreenState extends State<ChatGroupScreen> {
             child: _ChatGroupContent(
               groupName: widget.groupName,
               groupAvatar: widget.groupAvatar,
+              textController: _textController,
+              onTextChanged: _onTextChanged,
+              onSendMessage: (text) {
+                _viewModel.sendMessage(text);
+                _stopTyping();
+              },
             ),
           );
         },
@@ -132,10 +189,16 @@ class _ChatGroupScreenState extends State<ChatGroupScreen> {
 class _ChatGroupContent extends StatelessWidget {
   final String groupName;
   final String? groupAvatar;
+  final TextEditingController textController;
+  final ValueChanged<String> onTextChanged;
+  final ValueChanged<String> onSendMessage;
 
   const _ChatGroupContent({
     required this.groupName,
     this.groupAvatar,
+    required this.textController,
+    required this.onTextChanged,
+    required this.onSendMessage,
   });
 
   @override
@@ -145,6 +208,7 @@ class _ChatGroupContent extends StatelessWidget {
         // Récupérer les informations de présence du groupe
         final onlineCount = viewModel.onlineCount;
         final totalParticipants = viewModel.totalParticipants;
+        final typingUsers = viewModel.getTypingUsers(viewModel.groupId);
 
         return Scaffold(
           backgroundColor: Colors.white,
@@ -175,12 +239,34 @@ class _ChatGroupContent extends StatelessWidget {
           body: Column(
             children: [
               Container(height: 1, color: const Color(0xFFE0E0E0)),
+
+              // Typing indicator
+              if (typingUsers.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: Colors.grey[100],
+                  child: Row(
+                    children: [
+                      const Icon(Icons.edit, size: 16, color: Colors.grey),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${typingUsers.length} ${typingUsers.length == 1 ? 'personne' : 'personnes'} est en train d\'écrire...',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
               _buildMessagesList(),
               Container(height: 1, color: const Color(0xFFE0E0E0)),
               ChatInput(
-                onSendMessage: (text) {
-                  context.read<GroupChatViewModel>().sendMessage(text);
-                },
+                onSendMessage: onSendMessage,
+                onTextChanged: onTextChanged,
+                textController: textController,
                 controller: controller.ChatInputStateController(),
               ),
             ],

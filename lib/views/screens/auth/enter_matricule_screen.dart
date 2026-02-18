@@ -19,6 +19,7 @@ class EnterMatriculeScreen extends StatelessWidget {
     return AuthFormScreen(
       title: 'Please enter your\nmatricule below',
       inputHint: 'Matricule',
+      showBottomNav: false,
       isLoading: authViewModel.isLoading,
       errorMessage: authViewModel.error,
       successMessage: authViewModel.successMessage,

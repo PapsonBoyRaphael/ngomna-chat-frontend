@@ -104,24 +104,31 @@ class _ChatScreenState extends State<ChatScreen> {
     // Si on n'a pas de chat, retourner le user original
     if (chat == null) return widget.user;
 
-    // Chercher les métadonnées de l'utilisateur dans le chat
-    final userMetadata = chat!.userMetadata.firstWhere(
-      (metadata) => metadata.userId == widget.user.id,
-      orElse: () => ParticipantMetadata(
-        userId: widget.user.id,
-        nom: widget.user.nom,
-        prenom: widget.user.prenom,
-        unreadCount: 0,
-        isMuted: false,
-        isPinned: false,
-        notificationSettings: NotificationSettings(
-          enabled: true,
-          sound: true,
-          vibration: true,
-        ),
-        metadataId: '',
-      ),
+    final currentUser = _authViewModel.currentUser;
+    final currentUserId = currentUser?.id;
+    final currentUserMatricule = currentUser?.matricule;
+
+    // Chercher d'abord les métadonnées correspondant à l'utilisateur affiché
+    final directMatches = chat!.userMetadata.where(
+      (metadata) =>
+          metadata.userId == widget.user.id ||
+          metadata.userId == widget.user.matricule,
     );
+
+    ParticipantMetadata? userMetadata =
+        directMatches.isNotEmpty ? directMatches.first : null;
+
+    // Si non trouvé, prendre l'autre participant (pour les chats personnels)
+    if (userMetadata == null && chat!.userMetadata.isNotEmpty) {
+      final others = chat!.userMetadata.where(
+        (metadata) =>
+            metadata.userId != currentUserId &&
+            metadata.userId != currentUserMatricule,
+      );
+      userMetadata = others.isNotEmpty ? others.first : chat!.userMetadata[0];
+    }
+
+    if (userMetadata == null) return widget.user;
 
     // Retourner le user avec la présence à jour
     return User(
@@ -132,8 +139,8 @@ class _ChatScreenState extends State<ChatScreen> {
       ministere: widget.user.ministere,
       sexe: widget.user.sexe,
       avatarUrl: widget.user.avatarUrl,
-      isOnline: userMetadata.presence?.isOnline ?? false,
-      lastSeen: userMetadata.presence?.lastActivity,
+      isOnline: userMetadata.presence?.isOnline ?? widget.user.isOnline,
+      lastSeen: userMetadata.presence?.lastActivity ?? widget.user.lastSeen,
       createdAt: widget.user.createdAt,
       updatedAt: widget.user.updatedAt,
     );
@@ -234,6 +241,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isNotEmpty && !_isTyping) {
       // Commencer à taper
       _startTyping();
+    } else if (text.isNotEmpty && _isTyping) {
+      // Rafraîchir le typing
+      _refreshTyping();
     } else if (text.isEmpty && _isTyping) {
       // Arrêter de taper
       _stopTyping();
@@ -246,7 +256,15 @@ class _ChatScreenState extends State<ChatScreen> {
   void _startTyping() {
     if (!_isTyping) {
       _isTyping = true;
-      _messageViewModel.startTyping(widget.conversationId, _getCurrentUserId());
+      _messageViewModel.startTyping(widget.conversationId, _getCurrentUserId(),
+          status: 'start');
+    }
+  }
+
+  void _refreshTyping() {
+    if (_isTyping) {
+      _messageViewModel.startTyping(widget.conversationId, _getCurrentUserId(),
+          status: 'refresh');
     }
   }
 
@@ -260,7 +278,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _resetTypingTimer() {
     _typingTimer?.cancel();
     _typingTimer = Timer(const Duration(seconds: 3), () {
-      if (_isTyping && _textController.text.isEmpty) {
+      if (_isTyping) {
         _stopTyping();
       }
     });
@@ -392,6 +410,7 @@ class _ChatScreenContent extends StatelessWidget {
         user: user, // 🟢 Utilise le user avec présence passé en paramètre
         customTitle: chat?.displayName,
         customAvatar: chat?.avatarUrl,
+        isOnlineOverride: chat?.isOnline,
         onBack: () => Navigator.pop(context),
         onCall: () {
           // TODO: Implémenter l'appel audio

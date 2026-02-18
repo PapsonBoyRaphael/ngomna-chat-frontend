@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:ngomna_chat/data/models/message_model.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'package:ngomna_chat/data/services/api_service.dart';
 import 'package:ngomna_chat/data/services/hive_service.dart';
@@ -371,6 +372,17 @@ class MessageRepository {
       return;
     }
 
+    // 🔍 Vérifier si ces messages appartiennent à un broadcast (ignorer si oui)
+    final firstConvId = messages[0].conversationId;
+    final chat = await _hiveService.getChat(firstConvId);
+
+    if (chat != null && chat.type == ChatType.broadcast) {
+      // C'est un broadcast, laisser BroadcastRepository s'en occuper
+      print(
+          '👉 [MessageRepository] Messages broadcast ignorés (gérés par BroadcastRepository)');
+      return;
+    }
+
     // Grouper par conversationId
     final groupedMessages = <String, List<Message>>{};
     for (final message in messages) {
@@ -406,7 +418,8 @@ class MessageRepository {
           .map((msg) => msg.copyWith(isMe: _isMessageFromMe(msg)))
           .toList();
 
-      var localMsgs = _messagesCache[convId] ?? [];
+      // 🔧 Créer une VRAIE copie du cache local (pas une référence)
+      var localMsgs = List<Message>.from(_messagesCache[convId] ?? []);
 
       // Si le cache est vide, utiliser directement les messages du serveur
       if (localMsgs.isEmpty) {
@@ -422,10 +435,13 @@ class MessageRepository {
               m.id == serverMsg.id || m.temporaryId == serverMsg.temporaryId);
           if (idx != -1) {
             localMsgs[idx] = serverMsg; // update status/id
+            print('   ✏️ Mise à jour message existant: ${serverMsg.id}');
           } else {
             localMsgs.add(serverMsg);
+            print('   ➕ Ajout nouveau message: ${serverMsg.id}');
           }
         }
+        print('   ✅ Résultat merge: ${localMsgs.length} messages total');
       }
 
       print(

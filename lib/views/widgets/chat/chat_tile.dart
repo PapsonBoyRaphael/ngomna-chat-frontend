@@ -3,17 +3,20 @@ import 'package:flutter_vector_icons/flutter_vector_icons.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/services/storage_service.dart';
-import 'package:ngomna_chat/core/constants/app_fonts.dart';
 import 'package:ngomna_chat/core/utils/date_formatter.dart';
 
 class ChatTile extends StatelessWidget {
   final Chat chat;
   final VoidCallback onTap;
+  final bool isTyping;
+  final String? typingText;
 
   const ChatTile({
     super.key,
     required this.chat,
     required this.onTap,
+    this.isTyping = false,
+    this.typingText,
   });
 
   Icon _getStatusIcon(MessageStatus status) {
@@ -177,20 +180,34 @@ class ChatTile extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              if (chat.lastMessage != null &&
+              if (!isTyping &&
+                  chat.lastMessage != null &&
                   _isCurrentUserMessage(chat.lastMessage!)) ...[
                 _getStatusIcon(chat.lastMessage!.status),
                 const SizedBox(width: 4),
               ],
+              if (isTyping) ...[
+                const Icon(
+                  MaterialCommunityIcons.pencil,
+                  size: 16,
+                  color: Color(0xFF4CAF50),
+                ),
+                const SizedBox(width: 4),
+              ],
               Expanded(
                 child: Text(
-                  _getLastMessageText(),
+                  isTyping
+                      ? (typingText ?? 'en train d\'écrire...')
+                      : _getLastMessageText(),
                   maxLines: 1,
                   style: TextStyle(
                     fontSize: 16,
-                    color: const Color(0xFF7A7A7A),
-                    fontWeight: FontWeight.w400,
+                    color: isTyping
+                        ? const Color(0xFF4CAF50)
+                        : const Color(0xFF7A7A7A),
+                    fontWeight: isTyping ? FontWeight.w500 : FontWeight.w400,
                     fontFamily: 'Roboto',
+                    fontStyle: isTyping ? FontStyle.italic : FontStyle.normal,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -198,17 +215,6 @@ class ChatTile extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTime() {
-    return Text(
-      LiveDateFormatter.formatForChatList(chat.lastMessageAt),
-      style: const TextStyle(
-        fontSize: 12,
-        color: Color(0xFF4CAF50),
-        fontWeight: FontWeight.w500,
       ),
     );
   }

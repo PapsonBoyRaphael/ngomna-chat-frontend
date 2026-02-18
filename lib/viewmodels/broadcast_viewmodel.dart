@@ -4,6 +4,8 @@ import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/repositories/broadcast_repository.dart';
 import 'package:ngomna_chat/data/repositories/auth_repository.dart';
+import 'package:ngomna_chat/data/services/chat_stream_manager.dart';
+import 'package:ngomna_chat/data/services/storage_service.dart';
 
 class BroadcastViewModel extends ChangeNotifier {
   final BroadcastRepository _repository;
@@ -17,8 +19,11 @@ class BroadcastViewModel extends ChangeNotifier {
   bool _isSending = false;
   String? _error;
 
+  final Set<String> _typingUsers = {};
+
   // Subscription pour les mises à jour en temps réel
   StreamSubscription<List<Message>>? _messagesSubscription;
+  StreamSubscription<TypingEvent>? _typingSubscription;
 
   List<Message> get messages => _messages;
   List<String> get recipients => _recipients;
@@ -29,7 +34,14 @@ class BroadcastViewModel extends ChangeNotifier {
   BroadcastViewModel(this._repository, this._authRepository, this.broadcastId,
       Map<String, dynamic>? conversationData)
       : _chat =
-            conversationData != null ? Chat.fromJson(conversationData) : null;
+            conversationData != null ? Chat.fromJson(conversationData) : null {
+    // 🟢 Si le repository ne dispose pas du chat, le lui passer
+    if (conversationData != null && _chat != null) {
+      // Le repository peut avoir reçu le chat au moment de sa création
+      print(
+          '🟢 [BroadcastViewModel] Initialisation avec Chat réel: ${_chat!.name}');
+    }
+  }
 
   /// Initialiser le ViewModel (appelé après construction)
   Future<void> init() async {
@@ -53,6 +65,37 @@ class BroadcastViewModel extends ChangeNotifier {
         notifyListeners();
       },
     );
+
+    // Écouter les événements typing temps réel
+    // Note: Les broadcasts sont des diffusions, donc pas de typing d'autres utilisateurs normalement
+    // Mais on peut garder la fonctionnalité pour cohérence
+    _typingSubscription =
+        _repository.socketService.streamManager.typingStream.listen((event) {
+      if (event.conversationId != broadcastId) return;
+
+      final storageService = StorageService();
+      final currentUser = storageService.getUser();
+      final currentId = currentUser?.id;
+      final currentMatricule = currentUser?.matricule;
+
+      // Ignorer ses propres événements
+      if (event.userId == currentId || event.userId == currentMatricule) {
+        return;
+      }
+
+      print(
+          '⌨️ [BroadcastViewModel] Typing event: userId=${event.userId}, isTyping=${event.isTyping}');
+
+      if (event.isTyping) {
+        _typingUsers.add(event.userId);
+        print('✅ [BroadcastViewModel] Typing users: $_typingUsers');
+      } else {
+        _typingUsers.remove(event.userId);
+        print('❌ [BroadcastViewModel] Typing users: $_typingUsers');
+      }
+
+      notifyListeners();
+    });
   }
 
   Future<void> loadMessages() async {
@@ -130,10 +173,36 @@ class BroadcastViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Obtenir les utilisateurs en train de taper
+  List<String> getTypingUsers(String conversationId) {
+    return _typingUsers.toList();
+  }
+
+  /// Démarrer/rafraîchir le typing
+  Future<void> startTyping(String conversationId,
+      {String status = 'start'}) async {
+    try {
+      await _repository.socketService
+          .startTyping(conversationId, status: status);
+    } catch (e) {
+      print('❌ [BroadcastViewModel] Erreur startTyping: $e');
+    }
+  }
+
+  /// Arrêter le typing
+  Future<void> stopTyping(String conversationId) async {
+    try {
+      await _repository.socketService.stopTyping(conversationId);
+    } catch (e) {
+      print('❌ [BroadcastViewModel] Erreur stopTyping: $e');
+    }
+  }
+
   @override
   void dispose() {
     print('🧹 [BroadcastViewModel] dispose() - fermeture des subscriptions');
     _messagesSubscription?.cancel();
+    _typingSubscription?.cancel();
     super.dispose();
   }
 }

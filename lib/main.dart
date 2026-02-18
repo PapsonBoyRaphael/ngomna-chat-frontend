@@ -4,11 +4,9 @@ import 'package:ngomna_chat/core/routes/app_routes.dart';
 import 'package:ngomna_chat/core/constants/app_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-void main() async {
+void main() {
   // 🔥 Initialiser Flutter
   WidgetsFlutterBinding.ensureInitialized();
-
-  await initializeDateFormatting('fr_FR', null);
 
   // Configurer le builder d'erreur global
   ErrorWidget.builder = (FlutterErrorDetails details) {
@@ -20,25 +18,64 @@ void main() async {
     );
   };
 
-  // 🔥 Initialiser tous les services (Hive + Services) avec gestion d'erreur
-  try {
-    await AppProviders.initializeServices();
-    print('🚀 Application démarrée avec succès');
-    runApp(const MyApp());
-  } catch (e, stackTrace) {
-    print('💥 Erreur critique lors de l\'initialisation: $e');
-    print('Stack trace: $stackTrace');
-
-    // En cas d'erreur critique, afficher un écran d'erreur
-    runApp(const InitializationErrorApp(error: 'Erreur d\'initialisation'));
-  }
+  // Démarrer l'UI immédiatement, l'init se fera en arrière-plan
+  runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _isInitialized = false;
+  String? _initError;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bootstrap();
+    });
+  }
+
+  Future<void> _bootstrap() async {
+    try {
+      await initializeDateFormatting('fr_FR', null);
+      await AppProviders.initializeServices();
+      if (!mounted) return;
+      setState(() {
+        _isInitialized = true;
+        _initError = null;
+      });
+      print('🚀 Application démarrée avec succès');
+    } catch (e, stackTrace) {
+      print('💥 Erreur critique lors de l\'initialisation: $e');
+      print('Stack trace: $stackTrace');
+      if (!mounted) return;
+      setState(() {
+        _initError = e.toString();
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_initError != null) {
+      return InitializationErrorApp(
+        error: _initError ?? 'Erreur d\'initialisation',
+      );
+    }
+
+    if (!_isInitialized) {
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: SplashScreen(),
+      );
+    }
+
     return AppProviders.wrapWithProviders(
       child: Builder(
         builder: (context) {
@@ -71,6 +108,35 @@ class MyApp extends StatelessWidget {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4FFFB),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            CircularProgressIndicator(
+              color: Color(0xFF4CAF50),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Initialisation en cours...',
+              style: TextStyle(
+                fontSize: 16,
+                color: Color(0xFF2E7D32),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

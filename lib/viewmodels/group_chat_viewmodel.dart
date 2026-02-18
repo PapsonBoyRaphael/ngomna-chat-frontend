@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/group_message_model.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/repositories/group_chat_repository.dart';
+import 'package:ngomna_chat/data/services/chat_stream_manager.dart';
+import 'package:ngomna_chat/data/services/storage_service.dart';
 
 class GroupChatViewModel extends ChangeNotifier {
   final GroupChatRepository _repository;
@@ -14,8 +16,11 @@ class GroupChatViewModel extends ChangeNotifier {
   bool _isSending = false;
   String? _error;
 
+  final Set<String> _typingUsers = {};
+
   // Subscription pour les mises à jour en temps réel
   StreamSubscription<List<GroupMessage>>? _messagesSubscription;
+  StreamSubscription<TypingEvent>? _typingSubscription;
 
   List<GroupMessage> get messages => _messages;
   bool get isLoading => _isLoading;
@@ -93,6 +98,35 @@ class GroupChatViewModel extends ChangeNotifier {
         notifyListeners();
       },
     );
+
+    // Écouter les événements typing temps réel
+    _typingSubscription =
+        _repository.socketService.streamManager.typingStream.listen((event) {
+      if (event.conversationId != groupId) return;
+
+      final storageService = StorageService();
+      final currentUser = storageService.getUser();
+      final currentId = currentUser?.id;
+      final currentMatricule = currentUser?.matricule;
+
+      // Ignorer ses propres événements
+      if (event.userId == currentId || event.userId == currentMatricule) {
+        return;
+      }
+
+      print(
+          '⌨️ [GroupChatViewModel] Typing event: userId=${event.userId}, isTyping=${event.isTyping}');
+
+      if (event.isTyping) {
+        _typingUsers.add(event.userId);
+        print('✅ [GroupChatViewModel] Typing users: $_typingUsers');
+      } else {
+        _typingUsers.remove(event.userId);
+        print('❌ [GroupChatViewModel] Typing users: $_typingUsers');
+      }
+
+      notifyListeners();
+    });
   }
 
   Future<void> loadMessages() async {
@@ -147,10 +181,36 @@ class GroupChatViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Obtenir les utilisateurs en train de taper
+  List<String> getTypingUsers(String conversationId) {
+    return _typingUsers.toList();
+  }
+
+  /// Démarrer/rafraîchir le typing
+  Future<void> startTyping(String conversationId,
+      {String status = 'start'}) async {
+    try {
+      await _repository.socketService
+          .startTyping(conversationId, status: status);
+    } catch (e) {
+      print('❌ [GroupChatViewModel] Erreur startTyping: $e');
+    }
+  }
+
+  /// Arrêter le typing
+  Future<void> stopTyping(String conversationId) async {
+    try {
+      await _repository.socketService.stopTyping(conversationId);
+    } catch (e) {
+      print('❌ [GroupChatViewModel] Erreur stopTyping: $e');
+    }
+  }
+
   @override
   void dispose() {
     print('🧹 [GroupChatViewModel] dispose() - fermeture des subscriptions');
     _messagesSubscription?.cancel();
+    _typingSubscription?.cancel();
     super.dispose();
   }
 

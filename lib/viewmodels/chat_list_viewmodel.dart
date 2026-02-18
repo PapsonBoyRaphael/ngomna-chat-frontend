@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
-import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/repositories/chat_list_repository.dart';
 import 'package:ngomna_chat/data/services/storage_service.dart';
 import 'package:ngomna_chat/core/utils/date_formatter.dart';
+import 'package:ngomna_chat/data/services/chat_stream_manager.dart';
 import 'dart:async';
 
 enum ChatFilter {
@@ -27,11 +27,15 @@ class ChatListViewModel extends ChangeNotifier {
 
   final ChatListRepository _chatListRepository;
   StreamSubscription<List<Chat>>? _chatsSubscription;
+  StreamSubscription<TypingEvent>? _typingSubscription;
   Timer? _dateRefreshTimer;
 
   // Cache pour les badges non lus (par userId)
   final Map<String, Map<String, int>> _userUnreadCounts = {};
   int _totalUnreadMessages = 0;
+
+  // Tracking des utilisateurs en train d'écrire par conversation
+  final Map<String, Set<String>> _typingUsersByConversation = {};
 
   List<Chat> get chats => _filteredChats;
   bool get isLoading => _isLoading;
@@ -43,6 +47,41 @@ class ChatListViewModel extends ChangeNotifier {
   // Nombre de conversations avec messages non lus pour l'utilisateur courant
   int get unreadConversationsCount {
     return _chats.where((chat) => chat.unreadCount > 0).length;
+  }
+
+  // Récupérer les utilisateurs en train d'écrire dans une conversation
+  bool isTypingInConversation(String conversationId) {
+    final typingUsers = _typingUsersByConversation[conversationId] ?? {};
+    return typingUsers.isNotEmpty;
+  }
+
+  /// Retourner un libellé de typing adapté au type de conversation
+  String? getTypingLabel(Chat chat) {
+    final typingUsers = _typingUsersByConversation[chat.id] ?? {};
+    if (typingUsers.isEmpty) return null;
+
+    if (chat.type == ChatType.group) {
+      final names = typingUsers
+          .map((userId) => _resolveUserName(chat, userId))
+          .where((name) => name.isNotEmpty)
+          .toList();
+
+      if (names.isEmpty) {
+        return 'Quelqu\'un écrit...';
+      }
+
+      if (names.length == 1) {
+        return '${names.first} écrit...';
+      }
+
+      if (names.length == 2) {
+        return '${names[0]} et ${names[1]} écrivent...';
+      }
+
+      return '${names[0]} et ${names.length - 1} autres écrivent...';
+    }
+
+    return 'en train d\'écrire...';
   }
 
   ChatListViewModel({
@@ -77,6 +116,43 @@ class ChatListViewModel extends ChangeNotifier {
     _chatsSubscription = _chatListRepository.chatsStream.listen((chats) {
       print('📨 Conversations mises à jour: ${chats.length}');
       _updateChatsFromRepository(chats);
+    });
+
+    // Écouter les événements typing pour toutes les conversations
+    _typingSubscription = _chatListRepository
+        .socketService.streamManager.typingStream
+        .listen((event) {
+      final storageService = StorageService();
+      final currentUser = storageService.getUser();
+      final currentId = currentUser?.id;
+      final currentMatricule = currentUser?.matricule;
+
+      // Ignorer ses propres événements
+      if (event.userId == currentId || event.userId == currentMatricule) {
+        return;
+      }
+
+      print(
+          '⌨️ [ChatListViewModel] Typing event: conversationId=${event.conversationId}, userId=${event.userId}, isTyping=${event.isTyping}');
+
+      // Initialiser le Set si nécessaire
+      if (!_typingUsersByConversation.containsKey(event.conversationId)) {
+        _typingUsersByConversation[event.conversationId] = {};
+      }
+
+      final typingUsers = _typingUsersByConversation[event.conversationId]!;
+
+      if (event.isTyping) {
+        typingUsers.add(event.userId);
+        print(
+            '✅ [ChatListViewModel] ${typingUsers.length} utilisateur(s) en train d\'écrire dans ${event.conversationId}');
+      } else {
+        typingUsers.remove(event.userId);
+        print(
+            '❌ [ChatListViewModel] ${typingUsers.length} utilisateur(s) en train d\'écrire dans ${event.conversationId}');
+      }
+
+      notifyListeners();
     });
   }
 
@@ -151,6 +227,28 @@ class ChatListViewModel extends ChangeNotifier {
       }
       _userUnreadCounts[chat.id]![currentUserId] = userUnread;
     }
+  }
+
+  String _resolveUserName(Chat chat, String userId) {
+    final meta = chat.userMetadata.firstWhere(
+      (m) => m.userId == userId,
+      orElse: () => ParticipantMetadata(
+        userId: '',
+        unreadCount: 0,
+        isMuted: false,
+        isPinned: false,
+        notificationSettings: NotificationSettings(
+          enabled: true,
+          sound: true,
+          vibration: true,
+        ),
+        nom: '',
+        prenom: '',
+        metadataId: '',
+      ),
+    );
+
+    return meta.prenom.trim();
   }
 
   /// Appliquer un filtre
@@ -255,10 +353,12 @@ class ChatListViewModel extends ChangeNotifier {
     LiveDateFormatter.removeListener(_onDateRefresh);
 
     _chatsSubscription?.cancel();
+    _typingSubscription?.cancel();
     _dateRefreshTimer?.cancel();
     _chats.clear();
     _filteredChats.clear();
     _userUnreadCounts.clear();
+    _typingUsersByConversation.clear();
     super.dispose();
   }
 }

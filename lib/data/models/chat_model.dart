@@ -988,7 +988,6 @@ class AuditLogEntry {
       'metadata': metadata,
       '_id': {'\$oid': logId},
     };
-    
   }
 }
 

@@ -24,6 +24,9 @@ class ChatListRepository {
   // Alias pour accès depuis les ViewModels
   Stream<List<Chat>> get chatsUpdated => _conversationUpdateController.stream;
 
+  // Getter pour accéder au socket service (nécessaire pour les événements typing)
+  SocketService get socketService => _socketService;
+
   factory ChatListRepository({
     required SocketService socketService,
     required HiveService hiveService,

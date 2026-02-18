@@ -4,6 +4,7 @@ import 'package:ngomna_chat/data/models/message_model.dart';
 import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/repositories/message_repository.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
+import 'package:ngomna_chat/data/services/chat_stream_manager.dart';
 import 'package:ngomna_chat/viewmodels/auth_viewmodel.dart';
 
 class MessageViewModel extends ChangeNotifier {
@@ -16,6 +17,8 @@ class MessageViewModel extends ChangeNotifier {
   List<Message> _messages = [];
   bool _isLoading = false;
   String? _error;
+
+  final Set<String> _typingUsers = {};
 
   List<Message> get messages => _messages;
   bool get isLoading => _isLoading;
@@ -37,6 +40,7 @@ class MessageViewModel extends ChangeNotifier {
         _chat = chat;
 
   StreamSubscription<List<Message>>? _messagesSubscription;
+  StreamSubscription<TypingEvent>? _typingSubscription;
 
   /// Initialiser le ViewModel (appelé après construction)
   Future<void> init() async {
@@ -62,6 +66,29 @@ class MessageViewModel extends ChangeNotifier {
       } else {
         print(
             '⚠️ [MessageViewModel.init stream] currentMatricule est NULL, pas de re-normalisation');
+      }
+
+      notifyListeners();
+    });
+
+    // Écouter les événements typing temps réel
+    _typingSubscription =
+        _socketService.streamManager.typingStream.listen((event) {
+      if (event.conversationId != _conversationId) return;
+
+      final currentUser = _authViewModel.currentUser;
+      final currentId = currentUser?.id;
+      final currentMatricule = currentUser?.matricule;
+
+      // Ignorer ses propres événements
+      if (event.userId == currentId || event.userId == currentMatricule) {
+        return;
+      }
+
+      if (event.isTyping) {
+        _typingUsers.add(event.userId);
+      } else {
+        _typingUsers.remove(event.userId);
       }
 
       notifyListeners();
@@ -147,10 +174,14 @@ class MessageViewModel extends ChangeNotifier {
     }
   }
 
-  /// Démarrer le typing
-  Future<void> startTyping(String conversationId, String userId) async {
+  /// Démarrer/rafraîchir le typing
+  Future<void> startTyping(
+    String conversationId,
+    String userId, {
+    String status = 'start',
+  }) async {
     try {
-      await _socketService.startTyping(conversationId);
+      await _socketService.startTyping(conversationId, status: status);
     } catch (e) {
       print('❌ [MessageViewModel] Erreur startTyping: $e');
     }
@@ -223,9 +254,8 @@ class MessageViewModel extends ChangeNotifier {
 
   /// Obtenir les utilisateurs en train de taper
   List<String> getTypingUsers(String conversationId) {
-    // Cette méthode devrait retourner la liste des utilisateurs en train de taper
-    // Pour l'instant, on retourne une liste vide
-    return [];
+    if (conversationId != _conversationId) return [];
+    return _typingUsers.toList();
   }
 
   /// Obtenir les messages (alias pour messages getter)
@@ -247,6 +277,7 @@ class MessageViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _messagesSubscription?.cancel();
+    _typingSubscription?.cancel();
     super.dispose();
   }
 

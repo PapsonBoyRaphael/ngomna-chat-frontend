@@ -182,6 +182,8 @@ class __ChatListContentState extends State<_ChatListContent> {
                 return ChatTile(
                   chat: chat,
                   onTap: () => _navigateToChat(context, chat),
+                  isTyping: viewModel.isTypingInConversation(chat.id),
+                  typingText: viewModel.getTypingLabel(chat),
                 );
               },
             ),
