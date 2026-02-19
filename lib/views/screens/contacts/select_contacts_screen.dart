@@ -35,6 +35,7 @@ class _SelectContactsContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: Colors.white,
       body: Consumer<SelectContactsViewModel>(
         builder: (context, viewModel, _) {

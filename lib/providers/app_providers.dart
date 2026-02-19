@@ -86,7 +86,10 @@ class AppProviders {
           create: (_) => ContactRepository(),
         ),
         Provider<GroupChatRepository>(
-          create: (_) => GroupChatRepository(),
+          create: (context) => GroupChatRepository(
+            socketService: context.read<SocketService>(),
+            hiveService: context.read<HiveService>(),
+          ),
         ),
         Provider<GroupRepository>(
           create: (context) => GroupRepository(
@@ -228,7 +231,7 @@ class AppProviders {
       // Initialiser StorageService avec timeout
       final storageService = StorageService();
       await storageService.initialize().timeout(
-            Duration(seconds: 10),
+            Duration(seconds: 30),
             onTimeout: () =>
                 throw TimeoutException('StorageService initialization timeout'),
           );

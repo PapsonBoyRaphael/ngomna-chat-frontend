@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:ngomna_chat/data/models/message_model.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'package:ngomna_chat/data/services/api_service.dart';
 import 'package:ngomna_chat/data/services/hive_service.dart';
@@ -295,12 +296,11 @@ class MessageRepository {
     // Ajouter au cache et notifier les listeners
     _addMessageToCache(conversationId, normalizedMessage);
 
-    // Marquer comme lu si ce n'est pas notre propre message
-    if (!normalizedMessage.isMe && normalizedMessage.id.isNotEmpty) {
-      print(
-          '👁️ [MessageRepository] Marquage message comme read: ${normalizedMessage.id}');
-      markMessageRead(normalizedMessage.id, conversationId);
-    }
+    // ✅ CORRECTION: Ne PAS marquer read immédiatement
+    // Le message reste en DELIVERED jusqu'à ce qu'il soit affiché dans le chat
+    // Le marquage READ sera fait depuis chat_screen.dart quand le message est visible
+    print(
+        '📦 [MessageRepository] Message maintenu en statut DELIVERED - sera marqué READ lors de l\'affichage: ${normalizedMessage.id}');
   }
 
   /// Gérer la confirmation d'envoi d'un message
@@ -371,6 +371,17 @@ class MessageRepository {
       return;
     }
 
+    // 🔍 Vérifier si ces messages appartiennent à un broadcast (ignorer si oui)
+    final firstConvId = messages[0].conversationId;
+    final chat = await _hiveService.getChat(firstConvId);
+
+    if (chat != null && chat.type == ChatType.broadcast) {
+      // C'est un broadcast, laisser BroadcastRepository s'en occuper
+      print(
+          '👉 [MessageRepository] Messages broadcast ignorés (gérés par BroadcastRepository)');
+      return;
+    }
+
     // Grouper par conversationId
     final groupedMessages = <String, List<Message>>{};
     for (final message in messages) {
@@ -382,7 +393,8 @@ class MessageRepository {
     print(
         '📊 [MessageRepository] Messages groupés par conversation: ${groupedMessages.keys.length} conversations');
 
-    // Marquer les messages non-lus comme delivered ET read (si on est dans la conversation)
+    // ✅ CORRECTION: Marquer les messages comme DELIVERED seulement (pas READ)
+    // Le marquage READ sera fait depuis chat_screen.dart quand les messages sont affichés
     for (final message in messages) {
       if (message.id.isNotEmpty && !_isMessageFromMe(message)) {
         // Marquer comme delivered
@@ -391,11 +403,7 @@ class MessageRepository {
               '📬 [MessageRepository] Marquage message comme delivered lors du chargement: ${message.id}');
           markMessageDelivered(message.id, message.conversationId);
         }
-
-        // Marquer comme read (car on charge les messages = on est dans la conversation)
-        print(
-            '👁️ [MessageRepository] Marquage message comme read lors du chargement: ${message.id}');
-        markMessageRead(message.id, message.conversationId);
+        // ❌ SUPPRIMÉ: Le marquage READ était fait ici, maintenant géré par chat_screen
       }
     }
 
@@ -406,7 +414,8 @@ class MessageRepository {
           .map((msg) => msg.copyWith(isMe: _isMessageFromMe(msg)))
           .toList();
 
-      var localMsgs = _messagesCache[convId] ?? [];
+      // 🔧 Créer une VRAIE copie du cache local (pas une référence)
+      var localMsgs = List<Message>.from(_messagesCache[convId] ?? []);
 
       // Si le cache est vide, utiliser directement les messages du serveur
       if (localMsgs.isEmpty) {
@@ -422,10 +431,13 @@ class MessageRepository {
               m.id == serverMsg.id || m.temporaryId == serverMsg.temporaryId);
           if (idx != -1) {
             localMsgs[idx] = serverMsg; // update status/id
+            print('   ✏️ Mise à jour message existant: ${serverMsg.id}');
           } else {
             localMsgs.add(serverMsg);
+            print('   ➕ Ajout nouveau message: ${serverMsg.id}');
           }
         }
+        print('   ✅ Résultat merge: ${localMsgs.length} messages total');
       }
 
       print(

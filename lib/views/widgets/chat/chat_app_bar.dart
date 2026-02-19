@@ -11,6 +11,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? customSubtitle;
   final String? customAvatar;
   final bool showCallButtons;
+  final List<String>? typingUsers;
 
   /// Indique si c'est un groupe (affiche le nombre de membres)
   final bool isGroup;
@@ -24,6 +25,10 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// Indique si c'est une diffusion (broadcast)
   final bool isBroadcast;
 
+  /// Override de présence pour les chats personnels
+  final bool? isOnlineOverride;
+  final DateTime? lastSeenOverride;
+
   const ChatAppBar({
     super.key,
     required this.user,
@@ -34,10 +39,13 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.customSubtitle,
     this.customAvatar,
     this.showCallButtons = true,
+    this.typingUsers,
     this.isGroup = false,
     this.onlineCount,
     this.totalParticipants,
     this.isBroadcast = false,
+    this.isOnlineOverride,
+    this.lastSeenOverride,
   });
 
   @override
@@ -47,17 +55,29 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   String _formatLastSeen(DateTime? lastSeen) {
     if (lastSeen == null) return 'Hors ligne';
 
+    print('🕐 [ChatAppBar._formatLastSeen] Calcul du "dernière vu":');
+    print('   - lastSeen reçu: $lastSeen');
+    print('   - lastSeen.isUtc: ${lastSeen.isUtc}');
+
     // Convertir en heure locale si la date est en UTC
     final localLastSeen = lastSeen.isUtc ? lastSeen.toLocal() : lastSeen;
+    print('   - localLastSeen après conversion: $localLastSeen');
 
     final now = DateTime.now();
+    print('   - now (heure actuelle): $now');
+
     final difference = now.difference(localLastSeen);
+    print(
+        '   - difference: ${difference.inSeconds} secondes (${difference.inMinutes} minutes, ${difference.inHours} heures)');
 
     if (difference.inMinutes < 1) {
+      print('   ➡️ Résultat: "À l\'instant"');
       return 'À l\'instant';
     } else if (difference.inMinutes < 60) {
+      print('   ➡️ Résultat: "Vu il y a ${difference.inMinutes} min"');
       return 'Vu il y a ${difference.inMinutes} min';
     } else if (difference.inHours < 24) {
+      print('   ➡️ Résultat: "Vu il y a ${difference.inHours}h"');
       return 'Vu il y a ${difference.inHours}h';
     } else if (difference.inDays == 1) {
       return 'Vu hier à ${DateFormat.Hm().format(localLastSeen)}';
@@ -68,21 +88,48 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     }
   }
 
+  String _formatTyping(List<String> names, {required bool showNames}) {
+    if (names.isEmpty) return '';
+    if (!showNames) {
+      return 'En train d\'écrire...';
+    }
+    if (names.length == 1) {
+      return '${names.first} écrit...';
+    }
+    if (names.length == 2) {
+      return '${names[0]} et ${names[1]} écrivent...';
+    }
+    final othersCount = names.length - 2;
+    return '${names[0]}, ${names[1]} et $othersCount autres écrivent...';
+  }
+
   @override
   Widget build(BuildContext context) {
     final title = customTitle ?? user.fullName;
     final String subtitle;
+    final Color subtitleColor;
 
-    if (customSubtitle != null) {
+    final effectiveIsOnline = isOnlineOverride ?? user.isOnline;
+    final effectiveLastSeen = lastSeenOverride ?? user.lastSeen;
+    final hasTyping = typingUsers != null && typingUsers!.isNotEmpty;
+
+    if (hasTyping) {
+      subtitle = _formatTyping(typingUsers!, showNames: isGroup);
+      subtitleColor = const Color(0xFF4CAF50);
+    } else if (customSubtitle != null) {
       subtitle = customSubtitle!;
+      subtitleColor = const Color(0xFF9E9E9E);
     } else if (isGroup) {
       // Pour les groupes, afficher le nombre de membres en ligne
       final online = onlineCount ?? 0;
       final total = totalParticipants ?? 0;
       subtitle = '$total membres${online > 0 ? ', $online en ligne' : ''}';
+      subtitleColor = const Color(0xFF9E9E9E);
     } else {
       // Pour les chats personnels
-      subtitle = user.isOnline ? 'En ligne' : _formatLastSeen(user.lastSeen);
+      subtitle =
+          effectiveIsOnline ? 'En ligne' : _formatLastSeen(effectiveLastSeen);
+      subtitleColor = const Color(0xFF9E9E9E);
     }
 
     final avatarUrl = customAvatar ?? user.avatarUrl;
@@ -97,7 +144,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
               child: const Icon(Icons.arrow_back_ios, size: 18),
             ),
             const SizedBox(width: 8),
-            _buildAvatar(avatarUrl),
+            _buildAvatar(avatarUrl, isOnline: effectiveIsOnline),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -116,9 +163,9 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
-                      color: Color(0xFF9E9E9E),
+                      color: subtitleColor,
                     ),
                   ),
                 ],
@@ -141,7 +188,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _buildAvatar(String? avatarUrl) {
+  Widget _buildAvatar(String? avatarUrl, {required bool isOnline}) {
     return Stack(
       children: [
         CircleAvatar(
@@ -153,7 +200,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
                 : 'assets/avatars/default_avatar.png',
           ),
         ),
-        if (user.isOnline && !isGroup && !isBroadcast)
+        if (isOnline && !isGroup && !isBroadcast)
           Positioned(
             bottom: 1,
             right: 1,

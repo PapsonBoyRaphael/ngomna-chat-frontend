@@ -3,13 +3,29 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/services/chat_stream_manager.dart';
+import 'package:ngomna_chat/data/services/hive_service.dart';
+import 'package:ngomna_chat/core/constants/app_url.dart';
 
 class SocketService {
-  static const String _socketUrl = 'http://localhost:8003'; // Gateway
+  static final String _socketUrl = AppUrl.socketUrl; // Gateway (dynamique)
   static const Duration _connectionTimeout = Duration(seconds: 10);
   static const Duration _reconnectInterval = Duration(seconds: 3);
   static const int _maxReconnectAttempts = 5;
+
+  // 🔥 SINGLETON PATTERN
+  static SocketService? _instance;
+
+  factory SocketService() {
+    _instance ??= SocketService._internal();
+    return _instance!;
+  }
+
+  SocketService._internal() {
+    _loadCredentials();
+    _initializeSocket();
+  }
 
   late io.Socket _socket;
   bool _isConnected = false;
@@ -102,11 +118,6 @@ class SocketService {
   bool get isConnected => _isConnected;
   bool get isAuthenticated => _isAuthenticated;
 
-  SocketService() {
-    _loadCredentials();
-    _initializeSocket();
-  }
-
   Future<void> requestConversations({int page = 1, int limit = 20}) async {
     if (!_isAuthenticated) return;
 
@@ -165,7 +176,9 @@ class SocketService {
   void _setupEventListeners() {
     // Événements de connexion
     _socket.onConnect((_) {
-      print('✅ Socket.IO connecté');
+      final timestamp = DateTime.now().toIso8601String();
+      print('[$timestamp] ✅ Socket.IO connecté');
+      print('[$timestamp] 🔄 _isConnected: false → true');
       _isConnected = true;
       _reconnectAttempts = 0;
       _streamManager.emitConnection(ConnectionState.connected);
@@ -174,8 +187,15 @@ class SocketService {
       _startHeartbeat();
 
       // Authentifier automatiquement si on a des credentials
+      print(
+          '[$timestamp] 🔍 [onConnect] Credentials: token=${_accessToken != null ? "présent" : "manquant"}, userId=$_userId, matricule=$_matricule');
       if (_accessToken != null && _userId != null) {
+        print(
+            '[$timestamp] 🔐 [onConnect] Déclenchement authentification automatique');
         _authenticateWithToken();
+      } else {
+        print(
+            '[$timestamp] ⚠️ [onConnect] PAS d\'authentification auto: _accessToken=${_accessToken != null}, _userId=${_userId != null}');
       }
     });
 
@@ -204,7 +224,7 @@ class SocketService {
 
       final response = data as Map<String, dynamic>;
       print(
-          '📦 Conversations auto-jointe: ${response['autoJoinedConversations']}');
+          '📬 Conversations auto-jointe: ${response['autoJoinedConversations']}');
     });
 
     _socket.on('auth_error', (data) {
@@ -215,7 +235,7 @@ class SocketService {
     });
 
     // Événements messages privés
-    _socket.on('newMessage', (data) {
+    _socket.on('newMessage', (data) async {
       print('📩 Nouveau message reçu');
       print('📋 Raw data keys: ${(data as Map).keys.toList()}');
       print('📋 Raw data: $data');
@@ -223,21 +243,45 @@ class SocketService {
         final messageData = data as Map<String, dynamic>;
         final message = Message.fromJson(messageData);
 
-        // SEUL système: Émit via ChatStreamManager
-        final event = MessageEvent.fromJson(messageData, 'private');
-        _streamManager.emitMessage(event);
+        // Déterminer le contexte selon le type de message
+        String context = 'private';
+        if (messageData.containsKey('type')) {
+          final type = messageData['type'] as String?;
+          if (type == 'GROUP') {
+            context = 'group';
+          } else if (type == 'BROADCAST') {
+            context = 'broadcast';
+          } else if (type == 'CHANNEL') {
+            context = 'channel';
+          }
+        }
 
-        // ❌ SUPPRIMÉ: _newMessageController.add(message);
-        // Raison: Utiliser ChatStreamManager.messageStream à la place
+        // Fallback: détecter le type via Hive si le serveur n'envoie pas GROUP/BROADCAST
+        if (context == 'private' && message.conversationId.isNotEmpty) {
+          final chat = await HiveService().getChat(message.conversationId);
+          if (chat != null) {
+            if (chat.type == ChatType.group) {
+              context = 'group';
+            } else if (chat.type == ChatType.broadcast) {
+              context = 'broadcast';
+            } else if (chat.type == ChatType.channel) {
+              context = 'channel';
+            }
+          }
+        }
+
+        // Émission via ChatStreamManager
+        final event = MessageEvent.fromJson(messageData, context);
+        _streamManager.emitMessage(event);
 
         // Marquer automatiquement comme livré
         if (message.id.isNotEmpty && !message.isMe) {
           print(
-              '📦 markMessageDelivered (private) → messageId=${message.id}, conversationId=${message.conversationId}');
+              '📦 markMessageDelivered ($context) → messageId=${message.id}, conversationId=${message.conversationId}');
           markMessageDelivered(message.id, message.conversationId);
         } else {
           print(
-              '⏭️ markMessageDelivered ignoré (private) → id=${message.id}, isMe=${message.isMe}');
+              '⏭️ markMessageDelivered ignoré ($context) → id=${message.id}, isMe=${message.isMe}');
         }
       } catch (e) {
         print('❌ Erreur parsing nouveau message: $e');
@@ -289,6 +333,19 @@ class SocketService {
 
     _socket.on('conversationLoaded', (data) {
       print('💬 Conversation chargée');
+      if (data is Map<String, dynamic>) {
+        print('   - Clés disponibles: ${data.keys.toList()}');
+        print('   - _id: ${data['_id']}');
+        print('   - name: ${data['name']}');
+        print('   - userMetadata présent: ${data['userMetadata'] != null}');
+        print('   - presenceStats présent: ${data['presenceStats'] != null}');
+        if (data['presenceStats'] != null) {
+          final stats = data['presenceStats'];
+          print('   - presenceStats.onlineCount: ${stats['onlineCount']}');
+          print(
+              '   - presenceStats.totalParticipants: ${stats['totalParticipants']}');
+        }
+      }
       try {
         _conversationUpdateController.add({'type': 'single', 'data': data});
       } catch (e) {
@@ -318,6 +375,13 @@ class SocketService {
     _socket.on('user_online', (data) {
       print('🟢 [SocketService] Événement user_online reçu');
       print('   - Data: $data');
+      if (data is Map<String, dynamic>) {
+        print('   - Clés disponibles: ${data.keys.toList()}');
+        print('   - userId: ${data['userId']}');
+        print('   - matricule: ${data['matricule']}');
+        print('   - timestamp: ${data['timestamp']}');
+        print('   - lastActivity: ${data['lastActivity']}');
+      }
       _presenceUpdateController.add({'type': 'user_online', 'data': data});
     });
 
@@ -325,6 +389,14 @@ class SocketService {
     _socket.on('user_offline', (data) {
       print('🔴 [SocketService] Événement user_offline reçu');
       print('   - Data: $data');
+      if (data is Map<String, dynamic>) {
+        print('   - Clés disponibles: ${data.keys.toList()}');
+        print('   - userId: ${data['userId']}');
+        print('   - matricule: ${data['matricule']}');
+        print('   - timestamp: ${data['timestamp']}');
+        print('   - lastActivity: ${data['lastActivity']}');
+        print('   - disconnectedAt: ${data['disconnectedAt']}');
+      }
       _presenceUpdateController.add({'type': 'user_offline', 'data': data});
     });
 
@@ -434,6 +506,17 @@ class SocketService {
         _streamManager.emitTyping(event);
       } catch (e) {
         print('❌ Erreur parsing typing:event: $e');
+      }
+    });
+
+    // Événements typing:indicator (status: start/refresh/stop)
+    _socket.on('typing:indicator', (data) {
+      print('⌨️ Événement typing:indicator: $data');
+      try {
+        final event = TypingEvent.fromJson(data as Map<String, dynamic>);
+        _streamManager.emitTyping(event);
+      } catch (e) {
+        print('❌ Erreur parsing typing:indicator: $e');
       }
     });
 
@@ -573,7 +656,20 @@ class SocketService {
     });
 
     _socket.on('conversationLoaded', (data) {
-      print('💬 Conversation chargée');
+      print('💬 Conversation chargée (legacy listener)');
+      if (data is Map<String, dynamic>) {
+        print('   - Clés disponibles: ${data.keys.toList()}');
+        print('   - _id: ${data['_id']}');
+        print('   - name: ${data['name']}');
+        print('   - userMetadata présent: ${data['userMetadata'] != null}');
+        print('   - presenceStats présent: ${data['presenceStats'] != null}');
+        if (data['presenceStats'] != null) {
+          final stats = data['presenceStats'];
+          print('   - presenceStats.onlineCount: ${stats['onlineCount']}');
+          print(
+              '   - presenceStats.totalParticipants: ${stats['totalParticipants']}');
+        }
+      }
       try {
         _conversationUpdateController.add({'type': 'single', 'data': data});
       } catch (e) {
@@ -649,23 +745,56 @@ class SocketService {
 
   /// Authentifier avec token existant
   Future<void> _authenticateWithToken() async {
+    print(
+        '🔐 [_authenticateWithToken] Entrée: _isConnected=$_isConnected, token=${_accessToken != null}, userId=$_userId');
+
     if (!_isConnected || _accessToken == null || _userId == null) {
+      print(
+          '❌ [_authenticateWithToken] Conditions échouées, pas d\'envoi authenticate');
       return;
     }
 
+    print('📤 [_authenticateWithToken] Envoi \'authenticate\' au serveur...');
     _socket.emit('authenticate', {
       'userId': _userId,
       'matricule': _matricule,
       'token': _accessToken,
     });
 
-    print('🔐 Authentification auto avec token existant');
+    print(
+        '✅ [_authenticateWithToken] Event \'authenticate\' envoyé (userId=$_userId, matricule=$_matricule)');
   }
 
-  /// Attendre la connexion
-  Future<void> _waitForConnection({int maxRetries = 10}) async {
+  /// Attendre la connexion (et optionnellement l'authentification)
+  Future<void> _waitForConnection(
+      {int maxRetries = 10, bool requireAuth = false}) async {
+    print(
+        '🔄 [_waitForConnection] Démarrage (requireAuth=$requireAuth, maxRetries=$maxRetries)');
+
     for (int i = 0; i < maxRetries; i++) {
-      if (_isConnected) return;
+      // Vérifier l'état réel du socket ET nos flags
+      final socketConnected = _socket.connected;
+      final flagsOk =
+          requireAuth ? (_isConnected && _isAuthenticated) : _isConnected;
+
+      if (i % 5 == 0) {
+        // Log tous les 2.5 secondes
+        print(
+            '🔄 [_waitForConnection] Tentative ${i + 1}/$maxRetries: socket.connected=$socketConnected, _isConnected=$_isConnected, _isAuthenticated=$_isAuthenticated');
+      }
+
+      if (socketConnected && flagsOk) {
+        print(
+            '✅ [_waitForConnection] Socket prêt après ${i + 1} tentatives (connected=$socketConnected, authenticated=$_isAuthenticated)');
+        return;
+      }
+
+      // Synchroniser les flags si désynchronisés
+      if (socketConnected && !_isConnected) {
+        print('⚠️ [_waitForConnection] Flags désynchronisés, correction...');
+        _isConnected = true;
+      }
+
       await Future.delayed(const Duration(milliseconds: 500));
     }
     throw TimeoutException('Connexion Socket.IO timeout');
@@ -751,7 +880,10 @@ class SocketService {
   Future<void> getMessages(String conversationId,
       {int page = 1, int limit = 50}) async {
     print(
-        '🔍 [SocketService] getMessages appelé: conversationId=$conversationId, isConnected=$_isConnected, isAuthenticated=$_isAuthenticated');
+        '🔍 [SocketService] getMessages appelé: conversationId=$conversationId');
+    print(
+        '   - Flags: isConnected=$_isConnected, isAuthenticated=$_isAuthenticated');
+    print('   - Socket réel: _socket.connected=${_socket.connected}');
 
     // Temporairement désactivé pour test
     // if (!_isAuthenticated) {
@@ -760,16 +892,26 @@ class SocketService {
     //   return;
     // }
 
-    // Si pas connecté, attendre la reconnexion (max 10 secondes)
-    if (!_isConnected) {
-      print('⏳ [SocketService] Socket non connecté, attente de reconnexion...');
+    // Si pas connecté OU pas authentifié, attendre/forcer la reconnexion
+    if (!_isConnected || !_isAuthenticated) {
+      print('⏳ [SocketService] Socket non prêt, tentative de reconnexion...');
+
+      // Forcer la reconnexion immédiatement si nécessaire
+      if (!_socket.connected) {
+        print('🔄 [SocketService] Déclenchement manuel de socket.connect()');
+        _socket.connect();
+      }
+
       try {
-        await _waitForConnection(maxRetries: 20); // 20 * 500ms = 10 secondes
-        print('✅ [SocketService] Socket reconnecté, envoi de getMessages');
+        await _waitForConnection(
+            maxRetries: 40, requireAuth: true); // 40 * 500ms = 20 secondes
+        print(
+            '✅ [SocketService] Socket prêt (connecté et authentifié), envoi de getMessages');
       } catch (e) {
         print('❌ [SocketService] Timeout reconnexion: $e');
         print(
-            '   - État socket: connected=$_isConnected, authenticated=$_isAuthenticated');
+            '   - État flags: connected=$_isConnected, authenticated=$_isAuthenticated');
+        print('   - Socket.connected: ${_socket.connected}');
         print('   - Matricule: $_matricule');
         return;
       }
@@ -818,21 +960,71 @@ class SocketService {
     });
   }
 
-  /// Signaler que l'utilisateur tape
-  Future<void> startTyping(String conversationId) async {
+  /// Signaler que l'utilisateur tape (start/refresh/stop)
+  Future<void> startTyping(
+    String conversationId, {
+    String status = 'start',
+  }) async {
     if (!_isAuthenticated) return;
 
-    _socket.emit('typing', {
+    final userId = _matricule ?? _userId ?? '';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+    _socket.emit('typing:indicator', {
       'conversationId': conversationId,
+      'userId': userId,
+      'status': status, // start | refresh | stop
+      'timestamp': timestamp,
     });
+
+    // Compatibilité ancienne API
+    if (status == 'start') {
+      _socket.emit('typing', {
+        'conversationId': conversationId,
+        'userId': userId,
+        'timestamp': timestamp,
+      });
+      _socket.emit('typing:event', {
+        'conversationId': conversationId,
+        'userId': userId,
+        'event': 'typing:start',
+        'timestamp': timestamp,
+      });
+    } else if (status == 'refresh') {
+      _socket.emit('typing:event', {
+        'conversationId': conversationId,
+        'userId': userId,
+        'event': 'typing:refresh',
+        'timestamp': timestamp,
+      });
+    }
   }
 
   /// Signaler que l'utilisateur arrête de taper
   Future<void> stopTyping(String conversationId) async {
     if (!_isAuthenticated) return;
 
+    final userId = _matricule ?? _userId ?? '';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+    _socket.emit('typing:indicator', {
+      'conversationId': conversationId,
+      'userId': userId,
+      'status': 'stop',
+      'timestamp': timestamp,
+    });
+
+    // Compatibilité ancienne API
     _socket.emit('stopTyping', {
       'conversationId': conversationId,
+      'userId': userId,
+      'timestamp': timestamp,
+    });
+    _socket.emit('typing:event', {
+      'conversationId': conversationId,
+      'userId': userId,
+      'event': 'typing:stop',
+      'timestamp': timestamp,
     });
   }
 

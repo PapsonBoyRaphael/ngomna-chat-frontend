@@ -10,6 +10,7 @@ class SelectPostScreen extends StatelessWidget {
     return AuthFormScreen(
       title: 'Please enter your\nworking post below',
       inputHint: 'Type post here!',
+      showBottomNav: false,
       onSubmit: (post) {
         // TODO: Sauvegarder le post (ViewModel)
         Navigator.pushNamed(context, AppRoutes.home);

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ngomna_chat/views/screens/auth/enter_matricule_screen.dart';
 import 'package:ngomna_chat/views/widgets/common/top_bar.dart';
-import 'package:ngomna_chat/views/widgets/common/bottom_nav.dart';
 import 'package:ngomna_chat/core/routes/app_routes.dart';
 import 'package:ngomna_chat/core/constants/app_fonts.dart';
 
@@ -13,6 +12,7 @@ class WelcomeScreen extends StatelessWidget {
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: Column(
           children: [
@@ -69,11 +69,11 @@ class WelcomeScreen extends StatelessWidget {
                           backgroundColor: Colors.white,
                           foregroundColor: Colors.green,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 50,
-                            vertical: 26,
+                            horizontal: 45,
+                            vertical: 22,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
+                            borderRadius: BorderRadius.circular(40),
                           ),
                           elevation: 6,
                         ),
@@ -97,7 +97,7 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
             ),
-            const BottomNav(),
+            const SizedBox(height: 20),
           ],
         ),
       ),

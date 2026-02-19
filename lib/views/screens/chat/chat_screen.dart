@@ -13,6 +13,7 @@ import 'package:ngomna_chat/controllers/chat_input_controller.dart'
     as controller;
 import 'package:ngomna_chat/core/utils/date_formatter.dart';
 import 'package:ngomna_chat/data/repositories/message_repository.dart';
+import 'package:ngomna_chat/data/repositories/chat_list_repository.dart';
 import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'dart:async';
 
@@ -38,6 +39,9 @@ class _ChatScreenState extends State<ChatScreen> {
   late AuthViewModel _authViewModel;
   Chat? chat;
 
+  // Pour écouter les mises à jour du chat (présence, etc.)
+  StreamSubscription? _chatUpdatesSubscription;
+
   // Pour le typing indicator
   Timer? _typingTimer;
   bool _isTyping = false;
@@ -45,6 +49,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Pour le scroll automatique
   final ScrollController _scrollController = ScrollController();
+
+  // 🟢 Timer pour rafraîchir les dates/heures automatiquement
+  Timer? _dateRefreshTimer;
 
   @override
   void initState() {
@@ -76,6 +83,12 @@ class _ChatScreenState extends State<ChatScreen> {
     // S'abonner aux nouveaux messages pour scroll automatique
     _setupMessageListener();
 
+    // 🟢 NOUVEAU: Écouter les mises à jour du chat (présence, etc.) depuis ChatListRepository
+    _setupChatUpdatesListener();
+
+    // 🟢 NOUVEAU: Démarrer le timer de rafraîchissement des dates (toutes les minutes)
+    _startDateRefreshTimer();
+
     // Marquer la conversation comme lue
     _markConversationAsRead();
   }
@@ -86,20 +99,148 @@ class _ChatScreenState extends State<ChatScreen> {
     // Ici on peut ajouter une logique spécifique à l'UI
   }
 
-  void _markConversationAsRead() {
-    // Marquer tous les messages comme lus
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _messageViewModel.markAllAsRead(widget.conversationId);
+  /// 🟢 Crée un User avec la présence à jour depuis le chat
+  User _getUserWithUpdatedPresence() {
+    // Si on n'a pas de chat, retourner le user original
+    if (chat == null) return widget.user;
 
-      // Informer le serveur via Socket.IO
-      // (déjà fait dans markAllAsRead via MessageRepository)
+    final currentUser = _authViewModel.currentUser;
+    final currentUserMatricule = currentUser?.matricule;
+
+    // Pour une conversation personnelle, prendre l'autre participant
+    // (celui qui n'est pas l'utilisateur actuel)
+    ParticipantMetadata? otherUserMetadata;
+
+    for (final metadata in chat!.userMetadata) {
+      // Chercher le participant qui n'est pas l'utilisateur actuel
+      if (metadata.userId != currentUserMatricule &&
+          metadata.userId != currentUser?.id) {
+        otherUserMetadata = metadata;
+        break;
+      }
+    }
+
+    // Si pas trouvé (rare), prendre le premier
+    otherUserMetadata ??=
+        chat!.userMetadata.isNotEmpty ? chat!.userMetadata.first : null;
+
+    if (otherUserMetadata == null) return widget.user;
+
+    // Debug: afficher les données de présence utilisées
+    final presence = otherUserMetadata.presence;
+    if (presence != null) {
+      print('🔍 [ChatScreen._getUserWithUpdatedPresence] Présence trouvée:');
+      print('   - userId: ${otherUserMetadata.userId}');
+      print('   - isOnline: ${presence.isOnline}');
+      print('   - lastActivity: ${presence.lastActivity}');
+      print('   - lastActivity.isUtc: ${presence.lastActivity.isUtc}');
+      print(
+          '   - Format pour ChatAppBar: ${presence.isOnline ? "En ligne" : "Vu il y a ${DateTime.now().difference(presence.lastActivity).inMinutes} min"}');
+    } else {
+      print(
+          '🔍 [ChatScreen._getUserWithUpdatedPresence] Aucune présence trouvée');
+      print('   - userId: ${otherUserMetadata.userId}');
+      print('   - widget.user.lastSeen: ${widget.user.lastSeen}');
+    }
+
+    // Retourner le user avec la présence à jour
+    final updatedUser = User(
+      id: widget.user.id,
+      matricule: widget.user.matricule,
+      nom: widget.user.nom,
+      prenom: widget.user.prenom,
+      ministere: widget.user.ministere,
+      sexe: widget.user.sexe,
+      avatarUrl: widget.user.avatarUrl,
+      isOnline: otherUserMetadata.presence?.isOnline ?? widget.user.isOnline,
+      lastSeen:
+          otherUserMetadata.presence?.lastActivity ?? widget.user.lastSeen,
+      createdAt: widget.user.createdAt,
+      updatedAt: widget.user.updatedAt,
+    );
+
+    print('🔍 [ChatScreen._getUserWithUpdatedPresence] User créé:');
+    print('   - isOnline: ${updatedUser.isOnline}');
+    print('   - lastSeen: ${updatedUser.lastSeen}');
+
+    return updatedUser;
+  }
+
+  /// 🟢 Démarre le timer pour rafraîchir les dates/heures toutes les minutes
+  void _startDateRefreshTimer() {
+    _dateRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      // Forcer la reconstruction du widget pour mettre à jour les dates relatives
+      if (mounted) {
+        setState(() {
+          // Le setState() va forcer la reconstruction, les dates seront recalculées
+        });
+      }
+    });
+  }
+
+  void _setupChatUpdatesListener() {
+    final chatListRepository = context.read<ChatListRepository>();
+    _chatUpdatesSubscription = chatListRepository.chatsUpdated.listen((chats) {
+      // Chercher le chat actuel dans la liste mise à jour
+      Chat? updatedChat;
+      for (final c in chats) {
+        if (c.id == widget.conversationId) {
+          updatedChat = c;
+          break;
+        }
+      }
+
+      if (updatedChat != null) {
+        print(
+            '📡 [ChatScreen] Chat mis à jour reçu pour ${widget.conversationId}');
+
+        // Vérifier les données de présence
+        final userMetadata = updatedChat.userMetadata.firstWhere(
+          (m) => m.userId != _authViewModel.currentUser?.matricule,
+          orElse: () => updatedChat!.userMetadata.first,
+        );
+
+        if (userMetadata.presence != null) {
+          print(
+              '   👤 Présence: ${userMetadata.presence!.isOnline ? "🟢 EN LIGNE" : "🔴 HORS LIGNE"}');
+          print('   🕐 lastActivity: ${userMetadata.presence!.lastActivity}');
+        }
+
+        setState(() {
+          chat = updatedChat;
+        });
+        _messageViewModel.updateChat(updatedChat);
+        print('✅ [ChatScreen] setState() appelé, widget va se reconstruire');
+      }
+    });
+  }
+
+  void _markConversationAsRead() {
+    // ✅ CORRECTION: Marquer individuellement les messages comme lus au moment de l'affichage
+    // (Au lieu de tous les marquer d'un coup dès l'arrivée dans le chat)
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final messages = _messageViewModel.getMessages(widget.conversationId);
+      final messageRepository = _messageViewModel.messageRepository;
+
+      for (final message in messages) {
+        // Marquer READ seulement si: c'est pas un message de moi ET status < READ
+        if (!message.isMe && message.status.index < MessageStatus.read.index) {
+          print(
+              '👁️ [ChatScreen] Marquage message comme READ au moment de l\'affichage: ${message.id}');
+          await messageRepository.markMessageRead(
+              message.id, widget.conversationId);
+        }
+      }
     });
   }
 
   @override
   void dispose() {
     _messageViewModel.dispose();
+    _chatUpdatesSubscription?.cancel(); // ✨ Annuler la subscription
     _typingTimer?.cancel();
+    _dateRefreshTimer
+        ?.cancel(); // 🟢 Annuler le timer de rafraîchissement des dates
     _textController.dispose();
     _scrollController.dispose();
 
@@ -129,13 +270,11 @@ class _ChatScreenState extends State<ChatScreen> {
       senderId: _getCurrentUserId(),
     )
         .then((message) {
-      if (message != null) {
-        // Scroll vers le bas après envoi
-        _scrollToBottom();
+      // Scroll vers le bas après envoi
+      _scrollToBottom();
 
-        // Arrêter le typing indicator
-        _stopTyping();
-      }
+      // Arrêter le typing indicator
+      _stopTyping();
     });
 
     // Effacer le champ de texte
@@ -146,6 +285,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isNotEmpty && !_isTyping) {
       // Commencer à taper
       _startTyping();
+    } else if (text.isNotEmpty && _isTyping) {
+      // Rafraîchir le typing
+      _refreshTyping();
     } else if (text.isEmpty && _isTyping) {
       // Arrêter de taper
       _stopTyping();
@@ -158,7 +300,15 @@ class _ChatScreenState extends State<ChatScreen> {
   void _startTyping() {
     if (!_isTyping) {
       _isTyping = true;
-      _messageViewModel.startTyping(widget.conversationId, _getCurrentUserId());
+      _messageViewModel.startTyping(widget.conversationId, _getCurrentUserId(),
+          status: 'start');
+    }
+  }
+
+  void _refreshTyping() {
+    if (_isTyping) {
+      _messageViewModel.startTyping(widget.conversationId, _getCurrentUserId(),
+          status: 'refresh');
     }
   }
 
@@ -172,7 +322,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _resetTypingTimer() {
     _typingTimer?.cancel();
     _typingTimer = Timer(const Duration(seconds: 3), () {
-      if (_isTyping && _textController.text.isEmpty) {
+      if (_isTyping) {
         _stopTyping();
       }
     });
@@ -237,7 +387,8 @@ class _ChatScreenState extends State<ChatScreen> {
               }
             },
             child: _ChatScreenContent(
-              user: widget.user,
+              user:
+                  _getUserWithUpdatedPresence(), // 🟢 Passer le user avec la présence à jour
               conversationId: widget.conversationId,
               chat: chat,
               onSendMessage: _sendMessage,
@@ -300,9 +451,11 @@ class _ChatScreenContent extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: ChatAppBar(
-        user: user,
+        user: user, // 🟢 Utilise le user avec présence passé en paramètre
         customTitle: chat?.displayName,
         customAvatar: chat?.avatarUrl,
+        isOnlineOverride: chat?.isOnline,
+        typingUsers: typingUsers,
         onBack: () => Navigator.pop(context),
         onCall: () {
           // TODO: Implémenter l'appel audio
@@ -314,27 +467,6 @@ class _ChatScreenContent extends StatelessWidget {
       body: Column(
         children: [
           Container(height: 1, color: const Color(0xFFE0E0E0)),
-
-          // Typing indicator
-          if (typingUsers.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.grey[100],
-              child: Row(
-                children: [
-                  const Icon(Icons.edit, size: 16, color: Colors.grey),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${typingUsers.length} ${typingUsers.length == 1 ? 'personne' : 'personnes'} est en train d\'écrire...',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
 
           // Messages list
           Expanded(

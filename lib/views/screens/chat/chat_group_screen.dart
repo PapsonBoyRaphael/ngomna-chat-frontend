@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import 'package:ngomna_chat/viewmodels/group_chat_viewmodel.dart';
 import 'package:ngomna_chat/data/repositories/group_chat_repository.dart';
+import 'package:ngomna_chat/data/repositories/chat_list_repository.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_app_bar.dart';
 import 'package:ngomna_chat/views/widgets/chat/message_bubble_with_avatar.dart';
 import 'package:ngomna_chat/views/widgets/chat/chat_input.dart';
@@ -31,27 +34,119 @@ class ChatGroupScreen extends StatefulWidget {
 
 class _ChatGroupScreenState extends State<ChatGroupScreen> {
   late GroupChatViewModel _viewModel;
+  late StreamSubscription? _chatUpdatesSubscription;
+
+  // 🟢 Timer pour rafraîchir les dates/heures automatiquement
+  Timer? _dateRefreshTimer;
+
+  // Typing indicator
+  Timer? _typingTimer;
+  bool _isTyping = false;
+  final TextEditingController _textController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
 
-    // Créer le ViewModel
+    // Créer le ViewModel avec le repository du provider
+    final repository = context.read<GroupChatRepository>();
     _viewModel = GroupChatViewModel(
-      GroupChatRepository(),
+      repository,
       widget.groupId,
       widget.conversationData,
     );
 
     // 🟢 IMPORTANT: Appeler init() pour écouter les changements en temps réel
     _viewModel.init();
+
+    // 🟢 NOUVEAU: Écouter les mises à jour du chat (présence, etc.) depuis ChatListRepository
+    final chatListRepository = context.read<ChatListRepository>();
+    _chatUpdatesSubscription = chatListRepository.chatsUpdated.listen((chats) {
+      // Chercher le chat actuel dans la liste mise à jour
+      Chat? updatedChat;
+      for (final chat in chats) {
+        if (chat.id == widget.groupId) {
+          updatedChat = chat;
+          break;
+        }
+      }
+
+      if (updatedChat != null) {
+        print('📡 [ChatGroupScreen] Chat mis à jour reçu, notifiant ViewModel');
+        _viewModel.updateChat(updatedChat);
+      }
+    });
+
+    // 🟢 NOUVEAU: Démarrer le timer de rafraîchissement des dates (toutes les minutes)
+    _startDateRefreshTimer();
+  }
+
+  /// 🟢 Démarre le timer pour rafraîchir les dates/heures toutes les minutes
+  void _startDateRefreshTimer() {
+    _dateRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      // Forcer la reconstruction du widget pour mettre à jour les dates relatives
+      if (mounted) {
+        setState(() {
+          // Le setState() va forcer la reconstruction, les dates seront recalculées
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     print('🧹 [ChatGroupScreen] dispose()');
+    _chatUpdatesSubscription?.cancel();
+    _dateRefreshTimer
+        ?.cancel(); // 🟢 Annuler le timer de rafraîchissement des dates
+    _typingTimer?.cancel();
+    if (_isTyping) {
+      _viewModel.stopTyping(widget.groupId);
+    }
+    _textController.dispose();
     _viewModel.dispose();
     super.dispose();
+  }
+
+  void _onTextChanged(String text) {
+    if (text.isNotEmpty && !_isTyping) {
+      _startTyping();
+    } else if (text.isNotEmpty && _isTyping) {
+      _refreshTyping();
+    } else if (text.isEmpty && _isTyping) {
+      _stopTyping();
+    }
+
+    _resetTypingTimer();
+  }
+
+  void _startTyping() {
+    if (!_isTyping) {
+      _isTyping = true;
+      _viewModel.startTyping(widget.groupId, status: 'start');
+    }
+  }
+
+  void _refreshTyping() {
+    if (_isTyping) {
+      _viewModel.startTyping(widget.groupId, status: 'refresh');
+    }
+  }
+
+  void _stopTyping() {
+    if (_isTyping) {
+      _isTyping = false;
+      _viewModel.stopTyping(widget.groupId);
+    }
+  }
+
+  void _resetTypingTimer() {
+    _typingTimer?.cancel();
+    _typingTimer = Timer(const Duration(seconds: 3), () {
+      if (_isTyping) {
+        _stopTyping();
+      }
+    });
   }
 
   @override
@@ -77,6 +172,12 @@ class _ChatGroupScreenState extends State<ChatGroupScreen> {
             child: _ChatGroupContent(
               groupName: widget.groupName,
               groupAvatar: widget.groupAvatar,
+              textController: _textController,
+              onTextChanged: _onTextChanged,
+              onSendMessage: (text) {
+                _viewModel.sendMessage(text);
+                _stopTyping();
+              },
             ),
           );
         },
@@ -88,10 +189,16 @@ class _ChatGroupScreenState extends State<ChatGroupScreen> {
 class _ChatGroupContent extends StatelessWidget {
   final String groupName;
   final String? groupAvatar;
+  final TextEditingController textController;
+  final ValueChanged<String> onTextChanged;
+  final ValueChanged<String> onSendMessage;
 
   const _ChatGroupContent({
     required this.groupName,
     this.groupAvatar,
+    required this.textController,
+    required this.onTextChanged,
+    required this.onSendMessage,
   });
 
   @override
@@ -101,6 +208,7 @@ class _ChatGroupContent extends StatelessWidget {
         // Récupérer les informations de présence du groupe
         final onlineCount = viewModel.onlineCount;
         final totalParticipants = viewModel.totalParticipants;
+        final typingUsers = viewModel.getTypingUsers(viewModel.groupId);
 
         return Scaffold(
           backgroundColor: Colors.white,
@@ -112,11 +220,14 @@ class _ChatGroupContent extends StatelessWidget {
               prenom: groupName.split(' ').length > 1
                   ? groupName.split(' ').sublist(1).join(' ')
                   : '',
-              avatarUrl: groupAvatar,
+              avatarUrl: (groupAvatar != null && groupAvatar!.isNotEmpty)
+                  ? groupAvatar
+                  : 'assets/avatars/group.png',
               isOnline: onlineCount > 0, // Au moins un membre en ligne
             ),
             isGroup: true,
             onlineCount: onlineCount,
+            typingUsers: typingUsers,
             totalParticipants: totalParticipants,
             onBack: () => Navigator.pop(context),
             onCall: () {
@@ -128,13 +239,12 @@ class _ChatGroupContent extends StatelessWidget {
           ),
           body: Column(
             children: [
-              Container(height: 1, color: const Color(0xFFE0E0E0)),
               _buildMessagesList(),
               Container(height: 1, color: const Color(0xFFE0E0E0)),
               ChatInput(
-                onSendMessage: (text) {
-                  context.read<GroupChatViewModel>().sendMessage(text);
-                },
+                onSendMessage: onSendMessage,
+                onTextChanged: onTextChanged,
+                textController: textController,
                 controller: controller.ChatInputStateController(),
               ),
             ],
@@ -205,7 +315,13 @@ class _ChatGroupContent extends StatelessWidget {
 
     String dateText = '';
     if (createdAt != null) {
-      dateText = ' le ${DateFormatter.formatDateSeparator(createdAt)}';
+      final formattedDate = DateFormatter.formatDateSeparator(createdAt);
+      // Éviter "le Aujourd'hui", utiliser juste "Aujourd'hui"
+      if (formattedDate == 'Aujourd\'hui') {
+        dateText = ' $formattedDate';
+      } else {
+        dateText = ' le $formattedDate';
+      }
     }
 
     return Padding(

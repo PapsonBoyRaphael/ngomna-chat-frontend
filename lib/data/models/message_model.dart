@@ -656,7 +656,9 @@ class Message {
 
   // UI helpers
   String getFormattedTime() {
-    return '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
+    // Convertir en heure locale si nécessaire
+    final localTime = createdAt.isUtc ? createdAt.toLocal() : createdAt;
+    return '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
   }
 
   bool get hasAttachment => fileId != null || fileUrl != null;

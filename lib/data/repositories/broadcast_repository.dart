@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'package:ngomna_chat/data/models/message_model.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/services/hive_service.dart';
-import 'package:ngomna_chat/data/services/storage_service.dart';
+import 'package:ngomna_chat/data/services/socket_service.dart';
 import 'auth_repository.dart';
 
 class BroadcastRepository {
   final AuthRepository authRepository;
   final HiveService _hiveService;
+  final SocketService _socketService;
+  final Chat? _chat; // 🔵 Les données réelles du broadcast
 
   // Cache for broadcast messages
   final Map<String, List<Message>> _messageCache = {};
@@ -17,7 +20,14 @@ class BroadcastRepository {
   BroadcastRepository(
     this.authRepository, {
     HiveService? hiveService,
-  }) : _hiveService = hiveService ?? HiveService();
+    SocketService? socketService,
+    Chat? chat,
+  })  : _hiveService = hiveService ?? HiveService(),
+        _socketService = socketService ?? SocketService(),
+        _chat = chat;
+
+  // Getter pour accéder au socketService
+  SocketService get socketService => _socketService;
 
   Future<List<Message>> getBroadcastMessages(String broadcastId) async {
     print(
@@ -38,8 +48,6 @@ class BroadcastRepository {
       final cachedMessages =
           await _hiveService.getMessagesForConversation(broadcastId);
       if (cachedMessages.isNotEmpty) {
-        final currentUser = StorageService().getUser();
-
         _messageCache[broadcastId] = cachedMessages;
 
         print(
@@ -50,10 +58,18 @@ class BroadcastRepository {
       print('❌ [BroadcastRepository] Erreur lecture Hive: $e');
     }
 
-    // Charger les données de démo si aucun cache
+    // 🟢 Si on a les données du chat, les utiliser
+    if (_chat != null) {
+      print('🟢 [BroadcastRepository] Utilisation des données réelles du chat');
+      _messageCache[broadcastId] = [];
+      return [];
+    }
+
+    // Charger les données de démo si aucun cache et pas de données réelles
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // Les broadcasts n'ont que des messages sortants
+    print(
+        '⚠️ [BroadcastRepository] Aucune donnée réelle, utilisation de données de démo');
     final user = await authRepository.getCurrentUser();
     final demoMessages = [
       Message(
@@ -115,17 +131,6 @@ class BroadcastRepository {
     }
 
     return _messageStreams[broadcastId]!.stream;
-  }
-
-  /// Mettre à jour le stream pour un broadcast spécifique
-  void _updateBroadcastMessageStream(
-      String broadcastId, List<Message> messages) {
-    print(
-        '📡 [BroadcastRepository] Mise à jour du stream pour broadcast $broadcastId (${messages.length} messages)');
-
-    if (_messageStreams.containsKey(broadcastId)) {
-      _messageStreams[broadcastId]!.add(messages);
-    }
   }
 
   // Récupérer la liste des destinataires du broadcast
