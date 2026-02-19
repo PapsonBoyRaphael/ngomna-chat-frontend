@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 
 /// Configuration centralisée des URLs de l'application
@@ -7,23 +8,23 @@ class AppUrl {
   static const String _localhostDev = 'http://localhost';
   static const String _emulatorHost = 'http://10.0.2.2'; // Android Emulator
   static const String _productionHost =
-      '192.168.50.68'; // À adapter avec votre IP
+      'http://192.168.50.68'; // À adapter avec votre IP
 
   // Ports
   static const int _apiPort = 8000; // Gateway API
   static const int _socketPort = 8003; // Socket.IO Gateway
 
-  /// Détecte si on est sur émulateur Android
-  static bool get isAndroidEmulator {
-    return Platform.isAndroid && !Platform.isAndroid; // Sera amélioré
-  }
-
   /// Obtient l'hôte de base selon l'environnement
   static String get _baseHost {
+    // ✅ Sur le web, toujours utiliser localhost
+    if (kIsWeb) {
+      return _localhostDev;
+    }
+
+    // Sur mobile, détecter Android, iOS, etc.
     if (Platform.isAndroid) {
       // Sur Android, préférer 10.0.2.2 (émulateur) ou IP locale (téléphone)
-      // Pour un téléphone physique, remplacer par votre IP locale
-      return _productionHost; // Changerez à _productionHost si téléphone physique
+      return _productionHost;
     } else if (Platform.isIOS) {
       // Sur iOS réel ou simulateur, utiliser localhost ou IP locale
       return _localhostDev;
@@ -45,11 +46,11 @@ class AppUrl {
 
   /// Configuration pour déboguer
   static String getDebugInfo() {
+    final platform = kIsWeb ? 'Web' : Platform.operatingSystem;
     return '''
     🔧 Configuration URLs:
-    - Plateforme: ${Platform.operatingSystem}
-    - Est Android: ${Platform.isAndroid}
-    - Est iOS: ${Platform.isIOS}
+    - Est Web: $kIsWeb
+    - Plateforme: $platform
     - API Base URL: $apiBaseUrl
     - Socket URL: $socketUrl
     ''';

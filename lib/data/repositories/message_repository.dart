@@ -296,12 +296,11 @@ class MessageRepository {
     // Ajouter au cache et notifier les listeners
     _addMessageToCache(conversationId, normalizedMessage);
 
-    // Marquer comme lu si ce n'est pas notre propre message
-    if (!normalizedMessage.isMe && normalizedMessage.id.isNotEmpty) {
-      print(
-          '👁️ [MessageRepository] Marquage message comme read: ${normalizedMessage.id}');
-      markMessageRead(normalizedMessage.id, conversationId);
-    }
+    // ✅ CORRECTION: Ne PAS marquer read immédiatement
+    // Le message reste en DELIVERED jusqu'à ce qu'il soit affiché dans le chat
+    // Le marquage READ sera fait depuis chat_screen.dart quand le message est visible
+    print(
+        '📦 [MessageRepository] Message maintenu en statut DELIVERED - sera marqué READ lors de l\'affichage: ${normalizedMessage.id}');
   }
 
   /// Gérer la confirmation d'envoi d'un message
@@ -394,7 +393,8 @@ class MessageRepository {
     print(
         '📊 [MessageRepository] Messages groupés par conversation: ${groupedMessages.keys.length} conversations');
 
-    // Marquer les messages non-lus comme delivered ET read (si on est dans la conversation)
+    // ✅ CORRECTION: Marquer les messages comme DELIVERED seulement (pas READ)
+    // Le marquage READ sera fait depuis chat_screen.dart quand les messages sont affichés
     for (final message in messages) {
       if (message.id.isNotEmpty && !_isMessageFromMe(message)) {
         // Marquer comme delivered
@@ -403,11 +403,7 @@ class MessageRepository {
               '📬 [MessageRepository] Marquage message comme delivered lors du chargement: ${message.id}');
           markMessageDelivered(message.id, message.conversationId);
         }
-
-        // Marquer comme read (car on charge les messages = on est dans la conversation)
-        print(
-            '👁️ [MessageRepository] Marquage message comme read lors du chargement: ${message.id}');
-        markMessageRead(message.id, message.conversationId);
+        // ❌ SUPPRIMÉ: Le marquage READ était fait ici, maintenant géré par chat_screen
       }
     }
 

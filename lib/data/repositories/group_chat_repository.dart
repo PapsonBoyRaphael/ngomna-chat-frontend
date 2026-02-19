@@ -61,6 +61,9 @@ class GroupChatRepository {
   // Cache for group messages
   final Map<String, List<GroupMessage>> _messageCache = {};
 
+  // Cache pour les messages en cours d'envoi (temporaryId -> groupId)
+  final Map<String, String> _pendingMessages = {};
+
   // Streams for watching messages (real-time updates)
   final Map<String, StreamController<List<GroupMessage>>> _messageStreams = {};
 
@@ -85,6 +88,16 @@ class GroupChatRepository {
         print('❌ [GroupChatRepository] Erreur _handleMessagesLoaded: $e');
       });
     });
+
+    // Confirmation d'envoi (message_sent)
+    _socketService.messageSentStream.listen((response) {
+      _handleMessageSent(response);
+    });
+
+    // Changements de statut (delivered/read)
+    _socketService.streamManager.messageStatusStream.listen((event) {
+      _handleMessageStatus(event);
+    });
   }
 
   /// Gérer un événement message de groupe (depuis MessageEvent)
@@ -104,12 +117,14 @@ class GroupChatRepository {
 
       final message = GroupMessage(
         id: event.messageId,
+        temporaryId: null,
         conversationId: conversationId,
         senderId: event.senderId,
         receiverId: conversationId,
         content: event.content,
         createdAt: event.timestamp,
         isMe: isMe,
+        status: Message.parseMessageStatus(event.status),
         sender: User(
           id: event.senderId,
           matricule: event.senderId,
@@ -176,12 +191,14 @@ class GroupChatRepository {
 
       enrichedMessages.add(GroupMessage(
         id: msg.id,
+        temporaryId: msg.temporaryId,
         conversationId: msg.conversationId,
         senderId: msg.senderId,
         receiverId: msg.conversationId,
         content: msg.content,
         createdAt: msg.timestamp,
         isMe: msg.senderId == currentUser?.matricule,
+        status: msg.status,
         sender: User(
           id: msg.senderId,
           matricule: msg.senderId,
@@ -247,12 +264,14 @@ class GroupChatRepository {
 
           enrichedGroupMessages.add(GroupMessage(
             id: msg.id,
+            temporaryId: msg.temporaryId,
             conversationId: msg.conversationId,
             senderId: msg.senderId,
             receiverId: msg.conversationId,
             content: msg.content,
             createdAt: msg.timestamp,
             isMe: msg.senderId == currentUser?.matricule,
+            status: msg.status,
             sender: User(
               id: msg.senderId,
               matricule: msg.senderId,
@@ -289,14 +308,23 @@ class GroupChatRepository {
 
     final currentUser = _storageService.getUser();
 
-    final message = GroupMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+    final baseMessage = Message.createNew(
       conversationId: groupId,
       senderId: currentUser?.matricule ?? 'unknown',
+      content: text,
+    );
+
+    final message = GroupMessage(
+      id: baseMessage.temporaryId ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
+      temporaryId: baseMessage.temporaryId,
+      conversationId: groupId,
+      senderId: baseMessage.senderId,
       receiverId: groupId,
       content: text,
-      createdAt: DateTime.now(),
+      createdAt: baseMessage.createdAt,
       isMe: true,
+      status: baseMessage.status,
       sender: User(
         id: currentUser?.id ?? '',
         matricule: currentUser?.matricule ?? '',
@@ -317,19 +345,13 @@ class GroupChatRepository {
     _messageSentController.add(message);
     _messagesUpdatedController.add(_messageCache[groupId]!);
 
-    // Envoyer via Socket.IO
-    final socketMessage = Message(
-      id: message.id,
-      conversationId: groupId,
-      senderId: message.senderId,
-      receiverId: groupId,
-      content: text,
-      type: MessageType.text,
-      createdAt: DateTime.now(),
-      status: MessageStatus.sending,
-    );
+    // Stocker pour mise à jour via message_sent
+    if (message.temporaryId != null) {
+      _pendingMessages[message.temporaryId!] = groupId;
+    }
 
-    await _socketService.sendMessage(socketMessage);
+    // Envoyer via Socket.IO
+    await _socketService.sendMessage(baseMessage);
 
     print('✅ [GroupChatRepository] Message envoyé: $text');
     return message;
@@ -344,6 +366,79 @@ class GroupChatRepository {
 
     _messageReceivedController.add(message);
     _messagesUpdatedController.add(_messageCache[groupId]!);
+  }
+
+  void _handleMessageSent(MessageSentResponse response) {
+    final groupId = _pendingMessages[response.temporaryId];
+    if (groupId == null) return;
+
+    final messages = _messageCache[groupId];
+    if (messages == null) return;
+
+    final index =
+        messages.indexWhere((msg) => msg.temporaryId == response.temporaryId);
+    if (index == -1) return;
+
+    final updated = _copyGroupMessage(
+      messages[index],
+      id: response.messageId,
+      status: Message.parseMessageStatus(response.status),
+    );
+
+    messages[index] = updated;
+    _messagesUpdatedController.add(messages);
+    _updateGroupMessageStream(groupId, messages);
+
+    _pendingMessages.remove(response.temporaryId);
+  }
+
+  void _handleMessageStatus(MessageStatusEvent event) {
+    final targetConversationId = event.conversationId;
+
+    Iterable<MapEntry<String, List<GroupMessage>>> entries =
+        _messageCache.entries;
+    if (targetConversationId != null &&
+        _messageCache.containsKey(targetConversationId)) {
+      entries = [
+        MapEntry(targetConversationId, _messageCache[targetConversationId]!)
+      ];
+    }
+
+    for (final entry in entries) {
+      final groupId = entry.key;
+      final messages = entry.value;
+      final index = messages.indexWhere((msg) => msg.id == event.messageId);
+      if (index == -1) continue;
+
+      final updated = _copyGroupMessage(
+        messages[index],
+        status: Message.parseMessageStatus(event.status),
+      );
+
+      messages[index] = updated;
+      _messagesUpdatedController.add(messages);
+      _updateGroupMessageStream(groupId, messages);
+    }
+  }
+
+  GroupMessage _copyGroupMessage(
+    GroupMessage base, {
+    String? id,
+    String? temporaryId,
+    MessageStatus? status,
+  }) {
+    return GroupMessage(
+      id: id ?? base.id,
+      temporaryId: temporaryId ?? base.temporaryId,
+      conversationId: base.conversationId,
+      senderId: base.senderId,
+      receiverId: base.receiverId,
+      content: base.content,
+      createdAt: base.createdAt,
+      status: status ?? base.status,
+      isMe: base.isMe,
+      sender: base.sender,
+    );
   }
 
   /// Vider le cache d'un groupe spécifique

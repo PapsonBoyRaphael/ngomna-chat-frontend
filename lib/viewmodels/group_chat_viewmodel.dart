@@ -169,8 +169,7 @@ class GroupChatViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final sentMessage = await _repository.sendGroupMessage(groupId, text);
-      _messages.add(sentMessage);
+      await _repository.sendGroupMessage(groupId, text);
       _error = null;
     } catch (e) {
       _error = e.toString();

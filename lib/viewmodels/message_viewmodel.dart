@@ -27,6 +27,9 @@ class MessageViewModel extends ChangeNotifier {
   /// Données de la conversation (avec présence)
   Chat? get chat => _chat;
 
+  /// ✅ Getter public pour accéder au MessageRepository depuis chat_screen
+  MessageRepository get messageRepository => _messageRepository;
+
   MessageViewModel({
     required MessageRepository messageRepository,
     required String conversationId,

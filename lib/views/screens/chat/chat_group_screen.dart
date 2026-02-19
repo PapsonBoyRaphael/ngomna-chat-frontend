@@ -227,6 +227,7 @@ class _ChatGroupContent extends StatelessWidget {
             ),
             isGroup: true,
             onlineCount: onlineCount,
+            typingUsers: typingUsers,
             totalParticipants: totalParticipants,
             onBack: () => Navigator.pop(context),
             onCall: () {
@@ -238,29 +239,6 @@ class _ChatGroupContent extends StatelessWidget {
           ),
           body: Column(
             children: [
-              Container(height: 1, color: const Color(0xFFE0E0E0)),
-
-              // Typing indicator
-              if (typingUsers.isNotEmpty)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: Colors.grey[100],
-                  child: Row(
-                    children: [
-                      const Icon(Icons.edit, size: 16, color: Colors.grey),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${typingUsers.length} ${typingUsers.length == 1 ? 'personne' : 'personnes'} est en train d\'écrire...',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
               _buildMessagesList(),
               Container(height: 1, color: const Color(0xFFE0E0E0)),
               ChatInput(

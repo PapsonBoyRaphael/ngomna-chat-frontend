@@ -3,7 +3,9 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ngomna_chat/data/models/user_model.dart';
 import 'package:ngomna_chat/data/models/message_model.dart';
+import 'package:ngomna_chat/data/models/chat_model.dart';
 import 'package:ngomna_chat/data/services/chat_stream_manager.dart';
+import 'package:ngomna_chat/data/services/hive_service.dart';
 import 'package:ngomna_chat/core/constants/app_url.dart';
 
 class SocketService {
@@ -233,7 +235,7 @@ class SocketService {
     });
 
     // Événements messages privés
-    _socket.on('newMessage', (data) {
+    _socket.on('newMessage', (data) async {
       print('📩 Nouveau message reçu');
       print('📋 Raw data keys: ${(data as Map).keys.toList()}');
       print('📋 Raw data: $data');
@@ -249,6 +251,22 @@ class SocketService {
             context = 'group';
           } else if (type == 'BROADCAST') {
             context = 'broadcast';
+          } else if (type == 'CHANNEL') {
+            context = 'channel';
+          }
+        }
+
+        // Fallback: détecter le type via Hive si le serveur n'envoie pas GROUP/BROADCAST
+        if (context == 'private' && message.conversationId.isNotEmpty) {
+          final chat = await HiveService().getChat(message.conversationId);
+          if (chat != null) {
+            if (chat.type == ChatType.group) {
+              context = 'group';
+            } else if (chat.type == ChatType.broadcast) {
+              context = 'broadcast';
+            } else if (chat.type == ChatType.channel) {
+              context = 'channel';
+            }
           }
         }
 
@@ -315,6 +333,19 @@ class SocketService {
 
     _socket.on('conversationLoaded', (data) {
       print('💬 Conversation chargée');
+      if (data is Map<String, dynamic>) {
+        print('   - Clés disponibles: ${data.keys.toList()}');
+        print('   - _id: ${data['_id']}');
+        print('   - name: ${data['name']}');
+        print('   - userMetadata présent: ${data['userMetadata'] != null}');
+        print('   - presenceStats présent: ${data['presenceStats'] != null}');
+        if (data['presenceStats'] != null) {
+          final stats = data['presenceStats'];
+          print('   - presenceStats.onlineCount: ${stats['onlineCount']}');
+          print(
+              '   - presenceStats.totalParticipants: ${stats['totalParticipants']}');
+        }
+      }
       try {
         _conversationUpdateController.add({'type': 'single', 'data': data});
       } catch (e) {
@@ -344,6 +375,13 @@ class SocketService {
     _socket.on('user_online', (data) {
       print('🟢 [SocketService] Événement user_online reçu');
       print('   - Data: $data');
+      if (data is Map<String, dynamic>) {
+        print('   - Clés disponibles: ${data.keys.toList()}');
+        print('   - userId: ${data['userId']}');
+        print('   - matricule: ${data['matricule']}');
+        print('   - timestamp: ${data['timestamp']}');
+        print('   - lastActivity: ${data['lastActivity']}');
+      }
       _presenceUpdateController.add({'type': 'user_online', 'data': data});
     });
 
@@ -351,6 +389,14 @@ class SocketService {
     _socket.on('user_offline', (data) {
       print('🔴 [SocketService] Événement user_offline reçu');
       print('   - Data: $data');
+      if (data is Map<String, dynamic>) {
+        print('   - Clés disponibles: ${data.keys.toList()}');
+        print('   - userId: ${data['userId']}');
+        print('   - matricule: ${data['matricule']}');
+        print('   - timestamp: ${data['timestamp']}');
+        print('   - lastActivity: ${data['lastActivity']}');
+        print('   - disconnectedAt: ${data['disconnectedAt']}');
+      }
       _presenceUpdateController.add({'type': 'user_offline', 'data': data});
     });
 
@@ -610,7 +656,20 @@ class SocketService {
     });
 
     _socket.on('conversationLoaded', (data) {
-      print('💬 Conversation chargée');
+      print('💬 Conversation chargée (legacy listener)');
+      if (data is Map<String, dynamic>) {
+        print('   - Clés disponibles: ${data.keys.toList()}');
+        print('   - _id: ${data['_id']}');
+        print('   - name: ${data['name']}');
+        print('   - userMetadata présent: ${data['userMetadata'] != null}');
+        print('   - presenceStats présent: ${data['presenceStats'] != null}');
+        if (data['presenceStats'] != null) {
+          final stats = data['presenceStats'];
+          print('   - presenceStats.onlineCount: ${stats['onlineCount']}');
+          print(
+              '   - presenceStats.totalParticipants: ${stats['totalParticipants']}');
+        }
+      }
       try {
         _conversationUpdateController.add({'type': 'single', 'data': data});
       } catch (e) {

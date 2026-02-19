@@ -380,7 +380,44 @@ class ChatListRepository {
     try {
       // Extraire les conversations des données
       List<Chat> chats = [];
-      if (data['conversations'] is List) {
+
+      // Gérer le cas d'une conversation unique (conversationLoaded)
+      if (data['type'] == 'single' && data['data'] != null) {
+        print('📋 Conversation unique reçue (conversationLoaded)');
+        try {
+          final chat = Chat.fromJson(data['data'] as Map<String, dynamic>);
+          chats.add(chat);
+          print('✅ Conversation parsée: ${chat.id} (${chat.name})');
+
+          // Afficher les données de présence
+          print('   👥 Participants avec présence:');
+          for (final metadata in chat.userMetadata) {
+            final presence = metadata.presence;
+            if (presence != null) {
+              print(
+                  '      - ${metadata.nom} ${metadata.prenom} (${metadata.userId}): '
+                  '${presence.isOnline ? "🟢 EN LIGNE" : "🔴 HORS LIGNE"} '
+                  '(status: ${presence.status}, lastActivity: ${presence.lastActivity})');
+            } else {
+              print(
+                  '      - ${metadata.nom} ${metadata.prenom} (${metadata.userId}): ⚪ Pas de données de présence');
+            }
+          }
+
+          final stats = chat.presenceStats;
+          if (stats != null) {
+            print(
+                '   📊 Stats présence: ${stats.onlineCount}/${stats.totalParticipants} en ligne');
+            print('      - En ligne: ${stats.onlineParticipants.join(", ")}');
+          } else {
+            print('   📊 Stats présence: Non disponibles');
+          }
+        } catch (e) {
+          print('❌ Erreur conversion conversation unique: $e');
+        }
+      }
+      // Gérer le cas normal: liste de conversations (conversationsLoaded)
+      else if (data['conversations'] is List) {
         final conversationsData = data['conversations'] as List;
         print('📋 Nombre de conversations reçues: ${conversationsData.length}');
         for (final convData in conversationsData) {
@@ -418,7 +455,9 @@ class ChatListRepository {
           }
         }
       } else {
-        print('⚠️ Pas de clé "conversations" dans les données');
+        print(
+            '⚠️ Format de données non reconnu (ni type:single, ni conversations)');
+        print('   - Clés disponibles: ${data.keys.toList()}');
       }
 
       if (chats.isNotEmpty) {
@@ -496,9 +535,15 @@ class ChatListRepository {
           if (data is Map<String, dynamic>) {
             final userId = data['userId'] as String?;
             final matricule = data['matricule'] as String?;
+            final timestamp = data['timestamp'] ?? data['lastActivity'];
             print(
-                '   🟢 Utilisateur EN LIGNE: userId=$userId, matricule=$matricule');
-            _updateUserPresenceInCache(userId ?? matricule, true, 'online');
+                '   🟢 Utilisateur EN LIGNE: userId=$userId, matricule=$matricule, timestamp=$timestamp');
+            _updateUserPresenceInCache(
+              userId ?? matricule,
+              true,
+              'online',
+              timestamp: timestamp,
+            );
           }
           break;
 
@@ -507,9 +552,17 @@ class ChatListRepository {
           if (data is Map<String, dynamic>) {
             final userId = data['userId'] as String?;
             final matricule = data['matricule'] as String?;
+            final timestamp = data['timestamp'] ?? data['lastActivity'];
+            final disconnectedAt = data['disconnectedAt'] ?? timestamp;
             print(
-                '   🔴 Utilisateur HORS LIGNE: userId=$userId, matricule=$matricule');
-            _updateUserPresenceInCache(userId ?? matricule, false, 'offline');
+                '   🔴 Utilisateur HORS LIGNE: userId=$userId, matricule=$matricule, timestamp=$timestamp, disconnectedAt=$disconnectedAt');
+            _updateUserPresenceInCache(
+              userId ?? matricule,
+              false,
+              'offline',
+              timestamp: timestamp,
+              disconnectedAt: disconnectedAt,
+            );
           }
           break;
 
@@ -525,11 +578,42 @@ class ChatListRepository {
 
   /// Mettre à jour la présence d'un utilisateur dans le cache
   void _updateUserPresenceInCache(
-      String? userId, bool? isOnline, String? status) {
+    String? userId,
+    bool? isOnline,
+    String? status, {
+    dynamic timestamp,
+    dynamic disconnectedAt,
+  }) {
     if (userId == null) return;
 
     print('🔄 [ChatListRepository] Mise à jour présence cache pour $userId');
-    print('   - isOnline: $isOnline, status: $status');
+    print('   - isOnline: $isOnline, status: $status, timestamp: $timestamp');
+
+    // Parser le timestamp avec _extractDateHelper
+    DateTime lastActivityDate;
+    if (timestamp != null) {
+      try {
+        lastActivityDate = _extractDateHelper(timestamp);
+        print('   ✅ Timestamp parsé: $lastActivityDate');
+      } catch (e) {
+        print('   ⚠️ Erreur parsing timestamp: $e, utilisation DateTime.now()');
+        lastActivityDate = DateTime.now();
+      }
+    } else {
+      print('   ⚠️ Pas de timestamp fourni, utilisation DateTime.now()');
+      lastActivityDate = DateTime.now();
+    }
+
+    DateTime? disconnectedAtDate;
+    if (isOnline == false && disconnectedAt != null) {
+      try {
+        disconnectedAtDate = _extractDateHelper(disconnectedAt);
+        print('   ✅ DisconnectedAt parsé: $disconnectedAtDate');
+      } catch (e) {
+        print('   ⚠️ Erreur parsing disconnectedAt: $e');
+        disconnectedAtDate = null;
+      }
+    }
 
     int updatedCount = 0;
 
@@ -542,12 +626,12 @@ class ChatListRepository {
       if (participantIndex != -1) {
         print('   ✅ Utilisateur $userId trouvé dans conversation ${chat.id}');
 
-        // Créer une nouvelle UserPresence
+        // Créer une nouvelle UserPresence avec les timestamps du serveur
         final newPresence = UserPresence(
           isOnline: isOnline ?? false,
           status: status ?? (isOnline == true ? 'online' : 'offline'),
-          lastActivity: DateTime.now(),
-          disconnectedAt: isOnline == false ? DateTime.now() : null,
+          lastActivity: lastActivityDate,
+          disconnectedAt: disconnectedAtDate,
         );
 
         // Créer une copie du participant avec la nouvelle présence
@@ -598,14 +682,42 @@ class ChatListRepository {
         updatedCount++;
 
         print(
-            '   ✅ Présence mise à jour: ${updatedParticipant.userId} -> isOnline=${newPresence.isOnline}');
+            '   ✅ Présence mise à jour: ${updatedParticipant.userId} -> isOnline=${newPresence.isOnline}, lastActivity=${newPresence.lastActivity}');
       }
     }
 
     print('📨 Conversations mises à jour: $updatedCount');
 
-    // Notifier les listeners avec les données mises à jour
-    _conversationUpdateController.add(_chatsCache.values.toList());
+    if (updatedCount > 0) {
+      // Notifier les listeners avec les données mises à jour
+      print(
+          '🔔 [ChatListRepository] Notification du stream avec ${_chatsCache.length} conversations');
+      _conversationUpdateController.add(_chatsCache.values.toList());
+      print(
+          '✅ [ChatListRepository] Stream notifié, les widgets devraient se mettre à jour');
+    } else {
+      print(
+          '⚠️ [ChatListRepository] Aucune conversation mise à jour, pas de notification du stream');
+    }
+  }
+
+  /// Helper pour parser les dates depuis différents formats (MongoDB, ISO, timestamp)
+  DateTime _extractDateHelper(dynamic value) {
+    if (value is Map && value.containsKey('\$date')) {
+      final dateValue = value['\$date'];
+      if (dateValue is String) {
+        return DateTime.parse(dateValue);
+      } else if (dateValue is int) {
+        return DateTime.fromMillisecondsSinceEpoch(dateValue);
+      }
+    }
+    if (value is String) {
+      return DateTime.parse(value);
+    }
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(value);
+    }
+    throw FormatException('Format de date invalide: $value');
   }
 
   /// Mettre à jour la liste des utilisateurs en ligne dans une conversation

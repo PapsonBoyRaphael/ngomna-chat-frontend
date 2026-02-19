@@ -105,33 +105,46 @@ class _ChatScreenState extends State<ChatScreen> {
     if (chat == null) return widget.user;
 
     final currentUser = _authViewModel.currentUser;
-    final currentUserId = currentUser?.id;
     final currentUserMatricule = currentUser?.matricule;
 
-    // Chercher d'abord les métadonnées correspondant à l'utilisateur affiché
-    final directMatches = chat!.userMetadata.where(
-      (metadata) =>
-          metadata.userId == widget.user.id ||
-          metadata.userId == widget.user.matricule,
-    );
+    // Pour une conversation personnelle, prendre l'autre participant
+    // (celui qui n'est pas l'utilisateur actuel)
+    ParticipantMetadata? otherUserMetadata;
 
-    ParticipantMetadata? userMetadata =
-        directMatches.isNotEmpty ? directMatches.first : null;
-
-    // Si non trouvé, prendre l'autre participant (pour les chats personnels)
-    if (userMetadata == null && chat!.userMetadata.isNotEmpty) {
-      final others = chat!.userMetadata.where(
-        (metadata) =>
-            metadata.userId != currentUserId &&
-            metadata.userId != currentUserMatricule,
-      );
-      userMetadata = others.isNotEmpty ? others.first : chat!.userMetadata[0];
+    for (final metadata in chat!.userMetadata) {
+      // Chercher le participant qui n'est pas l'utilisateur actuel
+      if (metadata.userId != currentUserMatricule &&
+          metadata.userId != currentUser?.id) {
+        otherUserMetadata = metadata;
+        break;
+      }
     }
 
-    if (userMetadata == null) return widget.user;
+    // Si pas trouvé (rare), prendre le premier
+    otherUserMetadata ??=
+        chat!.userMetadata.isNotEmpty ? chat!.userMetadata.first : null;
+
+    if (otherUserMetadata == null) return widget.user;
+
+    // Debug: afficher les données de présence utilisées
+    final presence = otherUserMetadata.presence;
+    if (presence != null) {
+      print('🔍 [ChatScreen._getUserWithUpdatedPresence] Présence trouvée:');
+      print('   - userId: ${otherUserMetadata.userId}');
+      print('   - isOnline: ${presence.isOnline}');
+      print('   - lastActivity: ${presence.lastActivity}');
+      print('   - lastActivity.isUtc: ${presence.lastActivity.isUtc}');
+      print(
+          '   - Format pour ChatAppBar: ${presence.isOnline ? "En ligne" : "Vu il y a ${DateTime.now().difference(presence.lastActivity).inMinutes} min"}');
+    } else {
+      print(
+          '🔍 [ChatScreen._getUserWithUpdatedPresence] Aucune présence trouvée');
+      print('   - userId: ${otherUserMetadata.userId}');
+      print('   - widget.user.lastSeen: ${widget.user.lastSeen}');
+    }
 
     // Retourner le user avec la présence à jour
-    return User(
+    final updatedUser = User(
       id: widget.user.id,
       matricule: widget.user.matricule,
       nom: widget.user.nom,
@@ -139,11 +152,18 @@ class _ChatScreenState extends State<ChatScreen> {
       ministere: widget.user.ministere,
       sexe: widget.user.sexe,
       avatarUrl: widget.user.avatarUrl,
-      isOnline: userMetadata.presence?.isOnline ?? widget.user.isOnline,
-      lastSeen: userMetadata.presence?.lastActivity ?? widget.user.lastSeen,
+      isOnline: otherUserMetadata.presence?.isOnline ?? widget.user.isOnline,
+      lastSeen:
+          otherUserMetadata.presence?.lastActivity ?? widget.user.lastSeen,
       createdAt: widget.user.createdAt,
       updatedAt: widget.user.updatedAt,
     );
+
+    print('🔍 [ChatScreen._getUserWithUpdatedPresence] User créé:');
+    print('   - isOnline: ${updatedUser.isOnline}');
+    print('   - lastSeen: ${updatedUser.lastSeen}');
+
+    return updatedUser;
   }
 
   /// 🟢 Démarre le timer pour rafraîchir les dates/heures toutes les minutes
@@ -171,22 +191,46 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       if (updatedChat != null) {
-        print('📡 [ChatScreen] Chat mis à jour reçu, notifiant ViewModel');
+        print(
+            '📡 [ChatScreen] Chat mis à jour reçu pour ${widget.conversationId}');
+
+        // Vérifier les données de présence
+        final userMetadata = updatedChat.userMetadata.firstWhere(
+          (m) => m.userId != _authViewModel.currentUser?.matricule,
+          orElse: () => updatedChat!.userMetadata.first,
+        );
+
+        if (userMetadata.presence != null) {
+          print(
+              '   👤 Présence: ${userMetadata.presence!.isOnline ? "🟢 EN LIGNE" : "🔴 HORS LIGNE"}');
+          print('   🕐 lastActivity: ${userMetadata.presence!.lastActivity}');
+        }
+
         setState(() {
           chat = updatedChat;
         });
         _messageViewModel.updateChat(updatedChat);
+        print('✅ [ChatScreen] setState() appelé, widget va se reconstruire');
       }
     });
   }
 
   void _markConversationAsRead() {
-    // Marquer tous les messages comme lus
+    // ✅ CORRECTION: Marquer individuellement les messages comme lus au moment de l'affichage
+    // (Au lieu de tous les marquer d'un coup dès l'arrivée dans le chat)
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _messageViewModel.markAllAsRead(widget.conversationId);
+      final messages = _messageViewModel.getMessages(widget.conversationId);
+      final messageRepository = _messageViewModel.messageRepository;
 
-      // Informer le serveur via Socket.IO
-      // (déjà fait dans markAllAsRead via MessageRepository)
+      for (final message in messages) {
+        // Marquer READ seulement si: c'est pas un message de moi ET status < READ
+        if (!message.isMe && message.status.index < MessageStatus.read.index) {
+          print(
+              '👁️ [ChatScreen] Marquage message comme READ au moment de l\'affichage: ${message.id}');
+          await messageRepository.markMessageRead(
+              message.id, widget.conversationId);
+        }
+      }
     });
   }
 
@@ -411,6 +455,7 @@ class _ChatScreenContent extends StatelessWidget {
         customTitle: chat?.displayName,
         customAvatar: chat?.avatarUrl,
         isOnlineOverride: chat?.isOnline,
+        typingUsers: typingUsers,
         onBack: () => Navigator.pop(context),
         onCall: () {
           // TODO: Implémenter l'appel audio
@@ -422,27 +467,6 @@ class _ChatScreenContent extends StatelessWidget {
       body: Column(
         children: [
           Container(height: 1, color: const Color(0xFFE0E0E0)),
-
-          // Typing indicator
-          if (typingUsers.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.grey[100],
-              child: Row(
-                children: [
-                  const Icon(Icons.edit, size: 16, color: Colors.grey),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${typingUsers.length} ${typingUsers.length == 1 ? 'personne' : 'personnes'} est en train d\'écrire...',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
 
           // Messages list
           Expanded(

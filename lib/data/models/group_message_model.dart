@@ -6,6 +6,7 @@ class GroupMessage extends Message {
 
   GroupMessage({
     required super.id,
+    super.temporaryId,
     required super.conversationId,
     required super.senderId,
     required super.receiverId,
